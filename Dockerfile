@@ -1,4 +1,4 @@
-FROM alpine:latest
+FROM alpine:3.11.3
 LABEL maintainer="Izet Molla <izetmolla@icloud.com>"
 LABEL source="https://github.com/izetmolla/nfs-server-alpine"
 LABEL branch="master"

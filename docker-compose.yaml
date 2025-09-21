@@ -1,0 +1,15 @@
+services:
+  nfs-server:
+    image: izetmolla/nfs-server-alpine:latest
+    container_name: nfs-server
+    privileged: true                      # required to run the NFS server
+    restart: unless-stopped
+    environment:
+      SHARED_DIRECTORY: /mnt              # same as in your k8s spec
+    ports:
+      - "2049:2049/tcp"                   # NFSv4 (TCP/2049)
+      - "3000:3000/tcp"                   # UI/API
+    volumes:
+      - /mnt/hello:/mnt                   # host backing store -> container /mnt
+      - ./exports:/etc/exports:ro         # bind a local file to /etc/exports
+      # - /lib/modules:/lib/modules:ro    # optional; only if your host needs it

@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nfs
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nfs-exports
+  namespace: nfs
+data:
+  exports: |
+    /mnt  *(rw,sync,no_subtree_check,fsid=0,crossmnt,no_root_squash)
+    /mnt/test *(rw,sync,no_subtree_check)
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-server
+  namespace: nfs
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: nfs-server }
+  template:
+    metadata:
+      labels: { app: nfs-server }
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: "edge-de1"   # 👈 replace with your node name
+      containers:
+        - name: nfs
+          image: izetmolla/nfs-server-alpine:latest
+          imagePullPolicy: Always            # 👈 add this
+          env:
+            - name: SHARED_DIRECTORY
+              value: /mnt
+          securityContext:
+            privileged: true
+          ports:
+            - name: nfs
+              containerPort: 2049
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /mnt
+            - name: exports
+              mountPath: /etc/exports
+              subPath: exports
+      volumes:
+        - name: data
+          hostPath:
+            path: /mnt/CONTENT   # 👈 add this
+            type: DirectoryOrCreate
+        - name: exports
+          configMap:
+            name: nfs-exports
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nfs-server
+  namespace: nfs
+spec:
+  type: NodePort
+  clusterIP: 10.96.131.53
+  selector:
+    app: nfs-server
+  ports:
+    - name: nfs-server
+      protocol: TCP
+      port: 2049
+      targetPort: 2049
+      # nodePort: 30013
+
+
+# container example
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ubuntu-nfs
+  namespace: nfs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ubuntu-nfs
+  template:
+    metadata:
+      labels:
+        app: ubuntu-nfs
+    spec:
+      containers:
+        - name: ubuntu
+          image: ubuntu:24.04
+          command: ["bash", "-c", "sleep infinity"]
+          volumeMounts:
+            - name: nfs-vol
+              mountPath: /mnt/test
+      volumes:
+        - name: nfs-vol
+          nfs:
+            server: 10.96.131.53
+            path: /test   # NFSv4 path is RELATIVE to fsid=0 (/mnt) -> /mnt/test

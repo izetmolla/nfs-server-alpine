@@ -24,6 +24,10 @@ func Open(path string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
+	if err := renameLegacyMCPTables(gdb); err != nil {
+		return nil, err
+	}
+
 	if err := gdb.AutoMigrate(
 		&models.Export{},
 		&models.Setting{},
@@ -40,6 +44,36 @@ func Open(path string) (*gorm.DB, error) {
 	}
 
 	return gdb, nil
+}
+
+// renameLegacyMCPTables fixes GORM's bad pluralization of MCPOAuthClient
+// (mcpo_auth_clients) to the intended mcp_oauth_clients name used by queries.
+func renameLegacyMCPTables(gdb *gorm.DB) error {
+	type pair struct{ from, to string }
+	for _, p := range []pair{
+		{"mcpo_auth_clients", "mcp_oauth_clients"},
+	} {
+		if !gdb.Migrator().HasTable(p.from) {
+			continue
+		}
+		if gdb.Migrator().HasTable(p.to) {
+			// Prefer keeping the correctly named table; drop the legacy empty/dup.
+			var n int64
+			if err := gdb.Table(p.from).Count(&n).Error; err != nil {
+				return fmt.Errorf("count %s: %w", p.from, err)
+			}
+			if n == 0 {
+				if err := gdb.Migrator().DropTable(p.from); err != nil {
+					return fmt.Errorf("drop legacy %s: %w", p.from, err)
+				}
+			}
+			continue
+		}
+		if err := gdb.Exec("ALTER TABLE `" + p.from + "` RENAME TO `" + p.to + "`").Error; err != nil {
+			return fmt.Errorf("rename %s -> %s: %w", p.from, p.to, err)
+		}
+	}
+	return nil
 }
 
 func backfillExports(gdb *gorm.DB) error {

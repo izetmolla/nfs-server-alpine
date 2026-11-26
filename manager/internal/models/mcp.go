@@ -16,6 +16,11 @@ type MCPOAuthClient struct {
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
+// TableName fixes GORM's inflection of MCPOAuthClient → mcpo_auth_clients.
+func (MCPOAuthClient) TableName() string {
+	return "mcp_oauth_clients"
+}
+
 // RedirectURIList parses RedirectURIs as JSON or semicolon-separated values.
 func (c *MCPOAuthClient) RedirectURIList() []string {
 	raw := strings.TrimSpace(c.RedirectURIs)

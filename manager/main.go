@@ -103,7 +103,11 @@ func main() {
 	app := fiber.New(fiber.Config{AppName: "nfs-manager"})
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"*"},
-		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowHeaders: []string{
+			"Origin", "Content-Type", "Accept", "Authorization",
+			"MCP-Protocol-Version", "Mcp-Session-Id", "Last-Event-ID",
+		},
+		ExposeHeaders: []string{"WWW-Authenticate", "MCP-Session-Id"},
 	}))
 
 	// Mount MCP/OAuth before panel firewall so AI clients are not CIDR-blocked when MCP is on.
@@ -125,10 +129,13 @@ func mountMCP(app *fiber.App, oauthState *mcpoauth.State, deps mcpserver.Deps, s
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		return mcpserver.NewServer(deps)
 	}, &mcp.StreamableHTTPOptions{Stateless: true})
-	protected := mcpoauth.RequireBearerToken(oauthState, mcpHandler)
+	// CORS + bearer gate so unauthenticated initialize returns 401 + WWW-Authenticate
+	// (Cursor needs that challenge to show the Authorize button).
+	protected := mcpCORS(mcpoauth.RequireBearerToken(oauthState, mcpHandler))
 	mux.Handle("/mcp", protected)
 	mux.Handle("/mcp/", protected)
 
+	httpHandler := adaptor.HTTPHandler(mux)
 	app.Use(func(c fiber.Ctx) error {
 		path := c.Path()
 		if !mcpoauth.IsMCPPath(path) {
@@ -138,7 +145,24 @@ func mountMCP(app *fiber.App, oauthState *mcpoauth.State, deps mcpserver.Deps, s
 		if err != nil || !cfg.Enabled {
 			return c.Status(fiber.StatusNotFound).SendString("not found")
 		}
-		return adaptor.HTTPHandler(mux)(c)
+		// Ensure Fiber also exposes the challenge header for clients that read it
+		// from the outer response.
+		c.Set("Access-Control-Expose-Headers", "WWW-Authenticate, MCP-Session-Id")
+		return httpHandler(c)
+	})
+}
+
+func mcpCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		w.Header().Set("Access-Control-Expose-Headers", "WWW-Authenticate, MCP-Session-Id")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 

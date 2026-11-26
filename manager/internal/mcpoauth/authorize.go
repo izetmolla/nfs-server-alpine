@@ -21,6 +21,7 @@ type LoginView struct {
 	State               string
 	CodeChallenge       string
 	CodeChallengeMethod string
+	Resource            string
 	Error               string
 }
 
@@ -47,6 +48,7 @@ func authorize(st *State) http.HandlerFunc {
 		stateParam := q.Get("state")
 		codeChallenge := q.Get("code_challenge")
 		method := q.Get("code_challenge_method")
+		resource := q.Get("resource")
 		if method == "" {
 			method = "S256"
 		}
@@ -78,6 +80,7 @@ func authorize(st *State) http.HandlerFunc {
 			State:               stateParam,
 			CodeChallenge:       codeChallenge,
 			CodeChallengeMethod: method,
+			Resource:            resource,
 		})
 	}
 }

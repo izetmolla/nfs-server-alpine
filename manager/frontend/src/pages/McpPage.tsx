@@ -47,7 +47,7 @@ type SnippetTab = {
 export function McpPage() {
   const [settings, setSettings] = useState<MCPSettings>({
     enabled: false,
-    allowWrite: false,
+    allowWrite: true,
     publicBaseUrl: "",
   })
   const [sessions, setSessions] = useState<MCPSession[]>([])
@@ -342,8 +342,8 @@ export function McpPage() {
           />
           <Toggle
             id="mcp-write"
-            label={settings.allowWrite ? "Write tools on" : "Read-only tools"}
-            title="Allow create/update/delete export tools (requires nfs:write scope)"
+            label={settings.allowWrite ? "Full manage (write on)" : "Read-only tools"}
+            title="Allow create/update/clone/delete/apply/quota/settings tools (requires nfs:write scope). On by default."
             checked={settings.allowWrite}
             onChange={(next) => setSettings((s) => ({ ...s, allowWrite: next }))}
           />

@@ -19,9 +19,11 @@ type authorizationServerMetadata struct {
 }
 
 type protectedResourceMetadata struct {
-	Resource             string   `json:"resource"`
-	AuthorizationServers []string `json:"authorization_servers"`
-	ScopesSupported      []string `json:"scopes_supported"`
+	Resource               string   `json:"resource"`
+	AuthorizationServers   []string `json:"authorization_servers"`
+	ScopesSupported        []string `json:"scopes_supported"`
+	BearerMethodsSupported []string `json:"bearer_methods_supported,omitempty"`
+	ResourceName           string   `json:"resource_name,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -56,9 +58,11 @@ func protectedResource(st *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		base := requestBaseURL(st, r)
 		writeJSON(w, http.StatusOK, protectedResourceMetadata{
-			Resource:             st.MCPResourceURL(base),
-			AuthorizationServers: []string{base},
-			ScopesSupported:      mcpScopes(),
+			Resource:               st.MCPResourceURL(base),
+			AuthorizationServers:   []string{base},
+			ScopesSupported:        mcpScopes(),
+			BearerMethodsSupported: []string{"header"},
+			ResourceName:           "NFS Manager MCP",
 		})
 	}
 }

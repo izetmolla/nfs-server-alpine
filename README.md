@@ -258,10 +258,22 @@ OAuth 2.0 (PKCE + dynamic client registration) protects Streamable HTTP MCP at `
 
 | Mode | Tools |
 | --- | --- |
-| Read (default) | `nfs_status`, `nfs_dashboard`, `list_exports`, `get_export`, `storage_report`, `quota_report`, `list_logs`, `list_interfaces`, `browse_path` |
-| Write (`allowWrite`) | `create_export`, `update_export`, `delete_export`, `apply_exports`, `set_quota`, `mkdir` |
+| Analyze / read | `analyze_nfs`, `nfs_status`, `nfs_dashboard`, `list_exports`, `get_export`, `preview_export`, `option_catalog`, `storage_report`, `quota_report`, `export_usage`, `list_logs`, `list_interfaces`, `validate_clients`, `browse_path`, `get_settings` |
+| Manage / write (`allowWrite`, **on by default**) | `create_export`, `update_export`, `patch_export`, `clone_export`, `delete_export`, `apply_exports`, `set_quota`, `check_quotas`, `mkdir`, `update_settings` |
 
-Scopes: `nfs:read`, `nfs:write`. MCP is independent of `nfs_` API tokens.
+**Resources** (read with `nfs:read` — prefer these for agent context before calling tools):
+
+| URI | Purpose |
+| --- | --- |
+| `nfs://guide/playbook` | Workflow playbook (markdown) |
+| `nfs://guide/tool-map` | Goal → tool/resource map |
+| `nfs://analysis` | Health summary + warnings + suggested next steps |
+| `nfs://status` · `nfs://exports` · `nfs://exports/{id}` | Live status / export list / one export |
+| `nfs://storage` · `nfs://quotas` · `nfs://interfaces` | Capacity, quotas, NIC/CIDR hints |
+| `nfs://settings` · `nfs://option-catalog` · `nfs://logs/recent` | Defaults, option catalog, recent logs |
+| `nfs://fs{+path}` | Browse a path under browse roots (e.g. `nfs://fs/mnt`) |
+
+Scopes: `nfs:read`, `nfs:write`. Authorize with both for full management. MCP is independent of `nfs_` API tokens.
 
 ---
 

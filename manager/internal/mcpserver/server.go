@@ -99,27 +99,32 @@ func errResult(err error) (*mcp.CallToolResult, any, error) {
 	return nil, nil, err
 }
 
-// NewServer builds an MCP server with NFS manager tools.
-// Write tools are registered only when AllowWrite is currently enabled;
-// handlers also re-check AllowWrite and nfs:write scope at call time.
+// NewServer builds an MCP server with full NFS manager tools (read + write).
+// Write handlers require nfs:write scope and mcp allowWrite (default true).
 func NewServer(deps Deps) *mcp.Server {
 	t := &tools{Deps: deps}
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "nfs-manager",
 		Version: "1.1.0",
 	}, &mcp.ServerOptions{
-		Instructions: "NFS Manager MCP tools. Read scopes: nfs:read. Write scopes: nfs:write (requires mcp_allow_write).",
+		Instructions: "Full NFS Manager MCP. Prefer resources for context (nfs://guide/playbook, nfs://analysis, nfs://exports, nfs://status, nfs://option-catalog), then tools to act (create/update/clone/patch/delete/apply exports, quotas, mkdir, settings). Authorize with scope nfs:read nfs:write. Write tools need mcp allowWrite (on by default).",
 	})
 
+	// --- analyze / read ---
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "nfs_status",
-		Description: "Return NFS daemon / exportfs status snapshot.",
+		Description: "Return NFS daemon / exportfs status snapshot (mountd, last apply, live exports).",
 	}, t.nfsStatus)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "nfs_dashboard",
 		Description: "Dashboard summary: status, storage, connections, metrics, export counts.",
 	}, t.nfsDashboard)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "analyze_nfs",
+		Description: "Deep analysis: health, live vs DB exports, storage/quota pressure, client connections, recent errors, and suggested fixes.",
+	}, t.analyzeNFS)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_exports",
@@ -132,6 +137,16 @@ func NewServer(deps Deps) *mcp.Server {
 	}, t.getExport)
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "preview_export",
+		Description: "Preview the /etc/exports line that would be generated for the given export fields (no write).",
+	}, t.previewExport)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "option_catalog",
+		Description: "Typed NFS export option catalog (access/commit/squash/security/etc).",
+	}, t.optionCatalog)
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "storage_report",
 		Description: "Per-export directory usage and filesystem capacity report.",
 	}, t.storageReport)
@@ -140,6 +155,11 @@ func NewServer(deps Deps) *mcp.Server {
 		Name:        "quota_report",
 		Description: "Per-export soft quota usage report.",
 	}, t.quotaReport)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "export_usage",
+		Description: "Usage + quota evaluation for one export id.",
+	}, t.exportUsage)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_logs",
@@ -152,42 +172,72 @@ func NewServer(deps Deps) *mcp.Server {
 	}, t.listInterfaces)
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "validate_clients",
+		Description: "Validate/normalize an NFS clients ACL string (* / CIDRs / IPs).",
+	}, t.validateClients)
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "browse_path",
 		Description: "Browse directories under configured browse roots.",
 	}, t.browsePath)
 
-	if t.allowWrite() {
-		mcp.AddTool(server, &mcp.Tool{
-			Name:        "create_export",
-			Description: "Create a new NFS export (requires nfs:write).",
-		}, t.createExport)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_settings",
+		Description: "Read panel NFS defaults and related settings (no password).",
+	}, t.getSettings)
 
-		mcp.AddTool(server, &mcp.Tool{
-			Name:        "update_export",
-			Description: "Update an existing NFS export by id (requires nfs:write).",
-		}, t.updateExport)
+	// --- manage / write (always registered; gated at call time) ---
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "create_export",
+		Description: "Create a new NFS export. Optional apply=true writes live NFS. Requires nfs:write.",
+	}, t.createExport)
 
-		mcp.AddTool(server, &mcp.Tool{
-			Name:        "delete_export",
-			Description: "Delete an NFS export by id (requires nfs:write).",
-		}, t.deleteExport)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "update_export",
+		Description: "Update an existing NFS export by id. Optional apply=true. Requires nfs:write.",
+	}, t.updateExport)
 
-		mcp.AddTool(server, &mcp.Tool{
-			Name:        "apply_exports",
-			Description: "Write /etc/exports and run exportfs -ra (requires nfs:write).",
-		}, t.applyExports)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "patch_export",
+		Description: "Quick patch enabled / read-only / description on an export; optionally apply live. Requires nfs:write.",
+	}, t.patchExport)
 
-		mcp.AddTool(server, &mcp.Tool{
-			Name:        "set_quota",
-			Description: "Set soft quota bytes / postback URL on an export (requires nfs:write).",
-		}, t.setQuota)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "clone_export",
+		Description: "Clone an export to a new path (new fsid). Optional apply=true. Requires nfs:write.",
+	}, t.cloneExport)
 
-		mcp.AddTool(server, &mcp.Tool{
-			Name:        "mkdir",
-			Description: "Create a directory under browse roots (requires nfs:write).",
-		}, t.mkdir)
-	}
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "delete_export",
+		Description: "Delete an NFS export by id. Optional apply=true to refresh live NFS. Requires nfs:write.",
+	}, t.deleteExport)
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "apply_exports",
+		Description: "Write /etc/exports and run exportfs -ra (make DB exports live). Requires nfs:write.",
+	}, t.applyExports)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "set_quota",
+		Description: "Set soft quota bytes / postback URL on an export. Requires nfs:write.",
+	}, t.setQuota)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "check_quotas",
+		Description: "Run quota check now (optional postback notify). Requires nfs:write.",
+	}, t.checkQuotas)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mkdir",
+		Description: "Create a directory under browse roots. Requires nfs:write.",
+	}, t.mkdir)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "update_settings",
+		Description: "Update NFS default clients/options / global extras (not password). Requires nfs:write.",
+	}, t.updateSettings)
+
+	t.registerResources(server)
 	return server
 }
 
@@ -235,6 +285,41 @@ type exportParams struct {
 	QuotaPostbackURL *string `json:"quotaPostbackUrl,omitempty"`
 	ReadOnly         *bool   `json:"readOnly,omitempty"`
 	Sync             *bool   `json:"sync,omitempty"`
+	Apply            *bool   `json:"apply,omitempty" jsonschema:"If true, apply exports to live NFS after the change."`
+}
+
+type patchParams struct {
+	ID          uint    `json:"id" jsonschema:"Export id."`
+	Enabled     *bool   `json:"enabled,omitempty"`
+	AccessMode  *string `json:"accessMode,omitempty" jsonschema:"rw or ro."`
+	ReadOnly    *bool   `json:"readOnly,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Apply       *bool   `json:"apply,omitempty" jsonschema:"Defaults to true when enabled/access change."`
+}
+
+type cloneParams struct {
+	ID          uint    `json:"id" jsonschema:"Source export id."`
+	Path        string  `json:"path" jsonschema:"New absolute path for the clone."`
+	Description *string `json:"description,omitempty"`
+	Apply       *bool   `json:"apply,omitempty"`
+}
+
+type clientsParams struct {
+	Clients string `json:"clients" jsonschema:"Clients ACL to validate (* / CIDR / IP)."`
+}
+
+type checkQuotasParams struct {
+	Notify *bool `json:"notify,omitempty" jsonschema:"If true, fire quota postbacks when full (default true)."`
+}
+
+type settingsParams struct {
+	DefaultClients     *string `json:"defaultClients,omitempty"`
+	DefaultReadOnly    *bool   `json:"defaultReadOnly,omitempty"`
+	DefaultSync        *bool   `json:"defaultSync,omitempty"`
+	DefaultExtraOpts   *string `json:"defaultExtraOptions,omitempty"`
+	GlobalExtraOptions *string `json:"globalExtraOptions,omitempty"`
+	SwaggerEnabled     *bool   `json:"swaggerEnabled,omitempty"`
+	PanelAllowedCIDRs  *string `json:"panelAllowedCidrs,omitempty"`
 }
 
 type quotaParams struct {
@@ -389,12 +474,21 @@ func (t *tools) createExport(ctx context.Context, _ *mcp.CallToolRequest, params
 	if err != nil {
 		return errResult(err)
 	}
+	if err := os.MkdirAll(exp.Path, 0o755); err != nil {
+		return errResult(fmt.Errorf("create path: %w", err))
+	}
 	if err := t.DB.Create(&exp).Error; err != nil {
 		return errResult(err)
 	}
 	t.Log.Info("mcp", "created export", fmt.Sprintf("id=%d path=%s", exp.ID, exp.Path))
 	cfg, _ := t.Settings.LoadAppSettings()
-	return textResult(nfs.ToDTO(exp, cfg.GlobalExtraOptions))
+	out := map[string]any{"export": nfs.ToDTO(exp, cfg.GlobalExtraOptions)}
+	if params.Apply != nil && *params.Apply {
+		if err := t.applyInto(out); err != nil {
+			return errResult(err)
+		}
+	}
+	return textResult(out)
 }
 
 func (t *tools) updateExport(ctx context.Context, _ *mcp.CallToolRequest, params exportParams) (*mcp.CallToolResult, any, error) {
@@ -487,7 +581,13 @@ func (t *tools) updateExport(ctx context.Context, _ *mcp.CallToolRequest, params
 	}
 	t.Log.Info("mcp", "updated export", fmt.Sprintf("id=%d path=%s", mapped.ID, mapped.Path))
 	cfg, _ := t.Settings.LoadAppSettings()
-	return textResult(nfs.ToDTO(mapped, cfg.GlobalExtraOptions))
+	out := map[string]any{"export": nfs.ToDTO(mapped, cfg.GlobalExtraOptions)}
+	if params.Apply != nil && *params.Apply {
+		if err := t.applyInto(out); err != nil {
+			return errResult(err)
+		}
+	}
+	return textResult(out)
 }
 
 func (t *tools) deleteExport(ctx context.Context, _ *mcp.CallToolRequest, params idParams) (*mcp.CallToolResult, any, error) {
@@ -505,7 +605,36 @@ func (t *tools) deleteExport(ctx context.Context, _ *mcp.CallToolRequest, params
 		return errResult(fmt.Errorf("export not found"))
 	}
 	t.Log.Info("mcp", "deleted export", "id="+strconv.FormatUint(uint64(params.ID), 10))
-	return textResult(map[string]any{"ok": true, "id": params.ID})
+	out := map[string]any{"ok": true, "id": params.ID}
+	return textResult(out)
+}
+
+func (t *tools) applyInto(out map[string]any) error {
+	var exports []models.Export
+	if err := t.DB.Order("fsid asc, id asc").Find(&exports).Error; err != nil {
+		return err
+	}
+	cfg, err := t.Settings.LoadAppSettings()
+	if err != nil {
+		return err
+	}
+	applied, err := t.NFS.Apply(exports, nfs.ApplyOptions{GlobalExtraOptions: cfg.GlobalExtraOptions})
+	status := t.NFS.Status()
+	out["applied"] = err == nil
+	out["output"] = applied
+	out["status"] = status
+	if err != nil {
+		if t.Metrics != nil {
+			t.Metrics.IncApplyFail()
+		}
+		t.Log.Error("mcp", "exportfs apply failed", err.Error()+"\n"+applied)
+		return fmt.Errorf("%w: %s", err, applied)
+	}
+	if t.Metrics != nil {
+		t.Metrics.IncApplyOK()
+	}
+	t.Log.Success("mcp", "exports applied", applied)
+	return nil
 }
 
 func (t *tools) applyExports(ctx context.Context, _ *mcp.CallToolRequest, _ emptyParams) (*mcp.CallToolResult, any, error) {

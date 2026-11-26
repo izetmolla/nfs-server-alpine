@@ -145,7 +145,7 @@ func (s *Store) SavePassword(password string) error {
 func (s *Store) LoadMCPSettings() (models.MCPSettings, error) {
 	cfg := models.MCPSettings{
 		Enabled:       false,
-		AllowWrite:    false,
+		AllowWrite:    true, // full NFS management via MCP unless explicitly disabled
 		PublicBaseURL: "",
 	}
 	if v, ok, err := s.Get(models.SettingMCPEnabled); err != nil {

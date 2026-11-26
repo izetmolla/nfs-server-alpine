@@ -24,7 +24,15 @@ func Open(path string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
-	if err := gdb.AutoMigrate(&models.Export{}, &models.Setting{}, &models.APIToken{}, &models.MetricHour{}); err != nil {
+	if err := gdb.AutoMigrate(
+		&models.Export{},
+		&models.Setting{},
+		&models.APIToken{},
+		&models.MetricHour{},
+		&models.MCPOAuthClient{},
+		&models.MCPAuthCode{},
+		&models.MCPToken{},
+	); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	if err := backfillExports(gdb); err != nil {

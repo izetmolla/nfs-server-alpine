@@ -11,6 +11,7 @@ import (
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/applog"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/auth"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/fsbrowse"
+	"github.com/izetmolla/nfs-server-alpine/manager/internal/mcpoauth"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/metrics"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/models"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/netutil"
@@ -28,6 +29,7 @@ type Handler struct {
 	Auth        *auth.Guard
 	Settings    *settings.Store
 	Tokens      *tokens.Store
+	MCPStore    *mcpoauth.Store
 	Log         *applog.Ring
 	Metrics     *metrics.Collector
 	Quotas      *quota.Watcher
@@ -108,10 +110,19 @@ func (h *Handler) Register(app *fiber.App) {
 	api.Post("/tokens", h.Auth.RequirePanel(), h.CreateToken)
 	api.Patch("/tokens/:id", h.Auth.RequirePanel(), h.UpdateToken)
 	api.Delete("/tokens/:id", h.Auth.RequirePanel(), h.DeleteToken)
+
+	h.registerMCPAdmin(api)
 }
 
 func (h *Handler) PanelFirewall() fiber.Handler {
 	return func(c fiber.Ctx) error {
+		path := c.Path()
+		if mcpoauth.IsMCPPath(path) {
+			mcpCfg, err := h.Settings.LoadMCPSettings()
+			if err == nil && mcpCfg.Enabled {
+				return c.Next()
+			}
+		}
 		cfg, err := h.Settings.LoadAppSettings()
 		if err != nil {
 			return c.Next()

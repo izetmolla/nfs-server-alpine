@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
+import { DataTable, Td, Th } from "@/components/DataTable"
 import { Dialog } from "@/components/Dialog"
 import { PathBrowser } from "@/components/PathBrowser"
 import { RowMenu } from "@/components/RowMenu"
@@ -201,93 +202,91 @@ export function StoragesPage() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full min-w-[960px] text-left text-sm">
-          <thead className="border-b border-border bg-muted/50 text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2">Path</th>
-              <th className="px-3 py-2">Clients</th>
-              <th className="px-3 py-2">Options</th>
-              <th className="px-3 py-2">Fsid</th>
-              <th className="px-3 py-2">Folder size</th>
-              <th className="px-3 py-2">On</th>
-              <th className="px-3 py-2">Read-only</th>
-              <th className="px-3 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {exportsList.map((exp) => {
-              const usage = report?.paths.find((p) => p.exportId === exp.id)
-              const busyRow = rowBusy === exp.id || busy || cloneBusy
-              return (
-                <tr key={exp.id} className="border-b border-border last:border-0">
-                  <td className="px-3 py-2">
-                    <div className="font-mono text-xs">{exp.path}</div>
-                    {exp.description ? (
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        {exp.description}
-                      </div>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs">{exp.clients}</td>
-                  <td className="px-3 py-2 text-xs">
-                    {exp.accessMode}/{exp.commitMode}
-                    {exp.enabled ? "" : " (disabled)"}
-                  </td>
-                  <td className="px-3 py-2">{exp.fsid}</td>
-                  <td className="px-3 py-2 text-xs">
-                    {usage?.exists
-                      ? formatBytes(usage.usedBytes)
-                      : usage?.error || "n/a"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Toggle
-                      id={`enabled-${exp.id}`}
-                      label={exp.enabled ? "On" : "Off"}
-                      title="Enable or disable this export and apply immediately"
-                      checked={exp.enabled}
-                      disabled={busyRow}
-                      onChange={(next) => void toggleEnabled(exp, next)}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <Toggle
-                      id={`ro-${exp.id}`}
-                      label={exp.accessMode === "ro" ? "RO" : "RW"}
-                      title="Toggle read-only and apply immediately"
-                      checked={exp.accessMode === "ro"}
-                      disabled={busyRow || !exp.enabled}
-                      onChange={(next) => void toggleReadOnly(exp, next)}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex justify-end">
-                      <RowMenu
-                        disabled={busyRow}
-                        items={[
-                          {
-                            label: "Edit",
-                            onSelect: () => navigate(`/storages/${exp.id}`),
-                          },
-                          {
-                            label: "Clone",
-                            onSelect: () => openClone(exp),
-                          },
-                          {
-                            label: "Delete",
-                            tone: "danger",
-                            onSelect: () => void handleDelete(exp.id),
-                          },
-                        ]}
-                      />
+      <DataTable>
+        <thead>
+          <tr>
+            <Th style={{ width: "22%" }}>Path</Th>
+            <Th style={{ width: "14%" }}>Clients</Th>
+            <Th style={{ width: "12%" }}>Options</Th>
+            <Th style={{ width: "8%" }}>Fsid</Th>
+            <Th style={{ width: "12%" }}>Folder size</Th>
+            <Th style={{ width: "10%" }}>On</Th>
+            <Th style={{ width: "10%" }}>Read-only</Th>
+            <Th style={{ width: "12%" }}>Actions</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {exportsList.map((exp) => {
+            const usage = report?.paths.find((p) => p.exportId === exp.id)
+            const busyRow = rowBusy === exp.id || busy || cloneBusy
+            return (
+              <tr key={exp.id} className="border-b border-border last:border-0">
+                <Td>
+                  <div className="font-mono text-xs">{exp.path}</div>
+                  {exp.description ? (
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {exp.description}
                     </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+                  ) : null}
+                </Td>
+                <Td className="font-mono text-xs">{exp.clients}</Td>
+                <Td className="text-xs">
+                  {exp.accessMode}/{exp.commitMode}
+                  {exp.enabled ? "" : " (disabled)"}
+                </Td>
+                <Td>{exp.fsid}</Td>
+                <Td className="text-xs">
+                  {usage?.exists
+                    ? formatBytes(usage.usedBytes)
+                    : usage?.error || "n/a"}
+                </Td>
+                <Td>
+                  <Toggle
+                    id={`enabled-${exp.id}`}
+                    label={exp.enabled ? "On" : "Off"}
+                    title="Enable or disable this export and apply immediately"
+                    checked={exp.enabled}
+                    disabled={busyRow}
+                    onChange={(next) => void toggleEnabled(exp, next)}
+                  />
+                </Td>
+                <Td>
+                  <Toggle
+                    id={`ro-${exp.id}`}
+                    label={exp.accessMode === "ro" ? "RO" : "RW"}
+                    title="Toggle read-only and apply immediately"
+                    checked={exp.accessMode === "ro"}
+                    disabled={busyRow || !exp.enabled}
+                    onChange={(next) => void toggleReadOnly(exp, next)}
+                  />
+                </Td>
+                <Td>
+                  <div className="flex justify-end">
+                    <RowMenu
+                      disabled={busyRow}
+                      items={[
+                        {
+                          label: "Edit",
+                          onSelect: () => navigate(`/storages/${exp.id}`),
+                        },
+                        {
+                          label: "Clone",
+                          onSelect: () => openClone(exp),
+                        },
+                        {
+                          label: "Delete",
+                          tone: "danger",
+                          onSelect: () => void handleDelete(exp.id),
+                        },
+                      ]}
+                    />
+                  </div>
+                </Td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </DataTable>
 
       {status?.exportsLive ? (
         <pre className="overflow-x-auto rounded-xl border border-border bg-muted p-3 text-xs whitespace-pre-wrap">

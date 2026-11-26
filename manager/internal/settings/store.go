@@ -142,14 +142,58 @@ func (s *Store) SavePassword(password string) error {
 	return s.Set(models.SettingPanelPassword, password)
 }
 
+func (s *Store) LoadMCPSettings() (models.MCPSettings, error) {
+	cfg := models.MCPSettings{
+		Enabled:       false,
+		AllowWrite:    false,
+		PublicBaseURL: "",
+	}
+	if v, ok, err := s.Get(models.SettingMCPEnabled); err != nil {
+		return cfg, err
+	} else if ok {
+		cfg.Enabled = v == "true" || v == "1"
+	}
+	if v, ok, err := s.Get(models.SettingMCPAllowWrite); err != nil {
+		return cfg, err
+	} else if ok {
+		cfg.AllowWrite = v == "true" || v == "1"
+	}
+	if v, ok, err := s.Get(models.SettingMCPPublicBaseURL); err != nil {
+		return cfg, err
+	} else if ok {
+		cfg.PublicBaseURL = strings.TrimSpace(v)
+	}
+	return cfg, nil
+}
+
+func (s *Store) SaveMCPSettings(in models.MCPSettings) (models.MCPSettings, error) {
+	in.PublicBaseURL = strings.TrimRight(strings.TrimSpace(in.PublicBaseURL), "/")
+	pairs := map[string]string{
+		models.SettingMCPEnabled:       strconv.FormatBool(in.Enabled),
+		models.SettingMCPAllowWrite:    strconv.FormatBool(in.AllowWrite),
+		models.SettingMCPPublicBaseURL: in.PublicBaseURL,
+	}
+	for k, v := range pairs {
+		if err := s.Set(k, v); err != nil {
+			return models.MCPSettings{}, err
+		}
+	}
+	return s.LoadMCPSettings()
+}
+
 func (s *Store) PublicConfig() (models.PublicConfig, error) {
 	cfg, err := s.LoadAppSettings()
+	if err != nil {
+		return models.PublicConfig{}, err
+	}
+	mcp, err := s.LoadMCPSettings()
 	if err != nil {
 		return models.PublicConfig{}, err
 	}
 	return models.PublicConfig{
 		SwaggerEnabled:    cfg.SwaggerEnabled,
 		PanelAllowedCIDRs: cfg.PanelAllowedCIDRs,
+		McpEnabled:        mcp.Enabled,
 	}, nil
 }
 

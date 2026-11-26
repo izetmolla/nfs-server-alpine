@@ -17,6 +17,9 @@ const (
 	SettingGlobalExtraOptions = "global_extra_options"
 	SettingSwaggerEnabled     = "swagger_enabled"
 	SettingPanelAllowedCIDRs  = "panel_allowed_cidrs"
+	SettingMCPEnabled         = "mcp_enabled"
+	SettingMCPAllowWrite      = "mcp_allow_write"
+	SettingMCPPublicBaseURL   = "mcp_public_base_url"
 )
 
 type AppSettings struct {
@@ -33,4 +36,5 @@ type AppSettings struct {
 type PublicConfig struct {
 	SwaggerEnabled    bool   `json:"swaggerEnabled"`
 	PanelAllowedCIDRs string `json:"panelAllowedCidrs"`
+	McpEnabled        bool   `json:"mcpEnabled"`
 }

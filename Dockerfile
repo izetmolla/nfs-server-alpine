@@ -25,6 +25,7 @@ LABEL author="Izet Molla <izetmolla@icloud.com>"
 LABEL maintainer="Izet Molla <izetmolla@icloud.com>"
 LABEL source="https://github.com/izetmolla/nfs-server-alpine"
 LABEL branch="main"
+LABEL version="1.1.0"
 COPY Dockerfile README.md /
 
 RUN apk add --no-cache --update --verbose nfs-utils bash iproute2 && \

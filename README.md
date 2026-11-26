@@ -9,7 +9,7 @@ Lightweight **NFSv4** server on Alpine Linux, with a built-in **web management p
 | **2049/tcp** | NFSv4 |
 | **3000/tcp** | Manager panel + REST API (+ Swagger) |
 
-Image: `izetmolla/nfs-server-alpine:latest`  
+Image: `izetmolla/nfs-server-alpine:latest` · tag **`1.1.0`**  
 Base: Alpine **3.24.4** · NFSv4 only (no UDP / no v2)
 
 ---
@@ -23,6 +23,7 @@ Base: Alpine **3.24.4** · NFSv4 only (no UDP / no v2)
 - Dashboard metrics (auth / apply / API activity) with time-range filters
 - Live logs, settings, panel firewall CIDRs, Swagger toggle
 - IP-scoped API tokens for automation
+- Optional **MCP** endpoint (OAuth + Streamable HTTP) for AI clients — off by default
 
 ---
 
@@ -228,8 +229,39 @@ Automatic checks run about every **60s**; you can also trigger **Reports → Che
 | `READ_ONLY` | unset → `rw` | Seed read-only if set |
 | `SYNC` | unset → `async` | Seed sync mode if set |
 | `SHARED_DIRECTORY_2` | unset | Optional second share (must be under root) |
+| `MCP_PUBLIC_BASE_URL` | unset | Fallback public URL for MCP OAuth discovery (also set in panel → MCP) |
 
 Persist `/var/lib/nfs-manager` so panel settings, tokens, metrics, and exports survive restarts.
+
+---
+
+## MCP (AI clients) — v1.1.0
+
+OAuth 2.0 (PKCE + dynamic client registration) protects Streamable HTTP MCP at `/mcp`, same pattern as [gomcp](https://github.com/izetmolla/gomcp).
+
+1. Open panel → **MCP** (`/mcp-admin`)
+2. Set **Public base URL** to how clients reach the host (e.g. `http://192.168.1.10:3000`)
+3. Enable MCP (optionally enable **write tools**)
+4. On the MCP page use **Open with** for Cursor, Claude.ai, Claude Code, Codex, VS Code, Goose (or copy the matching config tab)
+5. Client shows **Authorize** → sign in with username `admin` and the **panel password**
+6. Revoke sessions / delete OAuth clients from the same MCP page
+
+```json
+{
+  "mcpServers": {
+    "nfs-server": {
+      "url": "http://HOST:3000/mcp"
+    }
+  }
+}
+```
+
+| Mode | Tools |
+| --- | --- |
+| Read (default) | `nfs_status`, `nfs_dashboard`, `list_exports`, `get_export`, `storage_report`, `quota_report`, `list_logs`, `list_interfaces`, `browse_path` |
+| Write (`allowWrite`) | `create_export`, `update_export`, `delete_export`, `apply_exports`, `set_quota`, `mkdir` |
+
+Scopes: `nfs:read`, `nfs:write`. MCP is independent of `nfs_` API tokens.
 
 ---
 
@@ -244,6 +276,7 @@ Useful endpoints:
 - `GET /api/exports/:id/usage` · `PUT /api/exports/:id/quota`
 - `GET /api/reports/storage` · `GET /api/reports/quotas` · `POST /api/reports/quotas/check`
 - `GET/POST /api/tokens`
+- `GET/PUT /api/mcp/settings` · `GET/DELETE /api/mcp/sessions` · `GET/DELETE /api/mcp/clients`
 - `GET /api/public-config`
 
 Interactive docs: `/swagger` (when enabled).
@@ -287,6 +320,8 @@ Multi-stage build: Bun frontend → Go manager → UPX shrink → Alpine runtime
 | Panel unreachable | Port 3000 published? Panel firewall CIDR? |
 | Quota postback not firing | URL must be `http(s)://…` · check Logs for `quota` · run **Check quotas now** |
 | Empty second share | Must be a **subdirectory** of `SHARED_DIRECTORY` (NFSv4 tree) |
+| MCP Authorize fails | MCP enabled? Public base URL matches client URL? Login `admin` + panel password |
+| `/mcp` 404 | Enable MCP in panel → MCP |
 
 Successful NFS startup log includes `Startup successful.` and a listening socket on **2049**.
 

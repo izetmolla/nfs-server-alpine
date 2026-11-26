@@ -4,6 +4,7 @@ import { RequireAuth } from "@/components/RequireAuth"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { LoginPage } from "@/pages/LoginPage"
 import { LogsPage } from "@/pages/LogsPage"
+import { McpPage } from "@/pages/McpPage"
 import { ReportsPage } from "@/pages/ReportsPage"
 import { SettingsPage } from "@/pages/SettingsPage"
 import { StorageCreatePage } from "@/pages/StorageCreatePage"
@@ -25,6 +26,7 @@ export function App() {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="logs" element={<LogsPage />} />
           <Route path="tokens" element={<TokensPage />} />
+          <Route path="mcp-admin" element={<McpPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>

@@ -3,23 +3,28 @@ package main
 import (
 	"io/fs"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/static"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/api"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/applog"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/auth"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/db"
+	"github.com/izetmolla/nfs-server-alpine/manager/internal/mcpoauth"
+	"github.com/izetmolla/nfs-server-alpine/manager/internal/mcpserver"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/metrics"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/nfs"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/quota"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/settings"
 	"github.com/izetmolla/nfs-server-alpine/manager/internal/tokens"
 	"github.com/izetmolla/nfs-server-alpine/manager/web"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // @title NFS Manager API
@@ -62,12 +67,33 @@ func main() {
 
 	guard := auth.New(auth.Config{Password: effectivePassword}, tokenStore)
 	nfsSvc := &nfs.Service{ExportsFile: exportsFile}
+	oauthState := mcpoauth.NewState(
+		gdb,
+		mcpoauth.AdminPasswordChecker(guard.CheckPassword),
+		func() string {
+			cfg, err := settingsStore.LoadMCPSettings()
+			if err != nil {
+				return ""
+			}
+			return cfg.PublicBaseURL
+		},
+	)
+	mcpDeps := mcpserver.Deps{
+		DB:          gdb,
+		NFS:         nfsSvc,
+		Settings:    settingsStore,
+		Log:         ring,
+		Metrics:     collector,
+		Quotas:      quotaWatcher,
+		BrowseRoots: fsbrowseRoots(),
+	}
 	handler := &api.Handler{
 		DB:          gdb,
 		NFS:         nfsSvc,
 		Auth:        guard,
 		Settings:    settingsStore,
 		Tokens:      tokenStore,
+		MCPStore:    oauthState.Store,
 		Log:         ring,
 		Metrics:     collector,
 		Quotas:      quotaWatcher,
@@ -80,6 +106,8 @@ func main() {
 		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"},
 	}))
 
+	// Mount MCP/OAuth before panel firewall so AI clients are not CIDR-blocked when MCP is on.
+	mountMCP(app, oauthState, mcpDeps, settingsStore)
 	handler.Register(app)
 	mountSwagger(app, settingsStore)
 	mountFrontend(app)
@@ -89,6 +117,29 @@ func main() {
 	if err := app.Listen(addr); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func mountMCP(app *fiber.App, oauthState *mcpoauth.State, deps mcpserver.Deps, store *settings.Store) {
+	mux := http.NewServeMux()
+	mcpoauth.Mount(mux, oauthState)
+	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return mcpserver.NewServer(deps)
+	}, &mcp.StreamableHTTPOptions{Stateless: true})
+	protected := mcpoauth.RequireBearerToken(oauthState, mcpHandler)
+	mux.Handle("/mcp", protected)
+	mux.Handle("/mcp/", protected)
+
+	app.Use(func(c fiber.Ctx) error {
+		path := c.Path()
+		if !mcpoauth.IsMCPPath(path) {
+			return c.Next()
+		}
+		cfg, err := store.LoadMCPSettings()
+		if err != nil || !cfg.Enabled {
+			return c.Status(fiber.StatusNotFound).SendString("not found")
+		}
+		return adaptor.HTTPHandler(mux)(c)
+	})
 }
 
 func mountSwagger(app *fiber.App, store *settings.Store) {
@@ -154,7 +205,8 @@ func mountFrontend(app *fiber.App) {
 
 	app.Get("/*", func(c fiber.Ctx) error {
 		path := c.Path()
-		if strings.HasPrefix(path, "/api") || strings.HasPrefix(path, "/swagger") {
+		if strings.HasPrefix(path, "/api") || strings.HasPrefix(path, "/swagger") ||
+			mcpoauth.IsMCPPath(path) {
 			return c.Status(fiber.StatusNotFound).SendString("not found")
 		}
 		data, err := fs.ReadFile(sub, "index.html")

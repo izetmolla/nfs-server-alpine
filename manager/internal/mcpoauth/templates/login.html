@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in — NFS Manager MCP</title>
+    <style>
+        :root {
+            --primary-color: #0f766e;
+            --secondary-color: #f1f5f9;
+            --text-color: #0f172a;
+            --border-color: #cbd5e1;
+            --error-color: #b91c1c;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0; padding: 0; min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(160deg, #ecfdf5 0%, #f8fafc 50%, #e0f2fe 100%);
+            color: var(--text-color);
+        }
+        .container {
+            background: white; padding: 2rem; border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(15, 23, 42, 0.08);
+            max-width: 400px; width: 90%; margin: 1rem;
+            border: 1px solid #e2e8f0;
+        }
+        .brand { text-align: center; font-size: 0.75rem; letter-spacing: 0.08em;
+            text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; }
+        h1 { margin: 0 0 0.5rem 0; font-size: 1.5rem; text-align: center; }
+        .subtitle { text-align: center; color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem; }
+        .client-info {
+            background: var(--secondary-color); padding: 0.75rem 1rem;
+            border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.85rem;
+        }
+        .field { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.35rem; font-size: 0.9rem; font-weight: 600; }
+        input[type="text"], input[type="password"] {
+            width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--border-color);
+            border-radius: 6px; font-size: 1rem; box-sizing: border-box;
+        }
+        .error {
+            background: #fef2f2; color: var(--error-color); padding: 0.6rem 0.75rem;
+            border-radius: 6px; font-size: 0.85rem; margin-bottom: 1rem;
+        }
+        .btn {
+            width: 100%; padding: 0.75rem 1.5rem; border-radius: 6px; cursor: pointer;
+            font-size: 1rem; border: none; background-color: var(--primary-color); color: white;
+        }
+        .btn:hover { background-color: #0d9488; }
+        .hint { text-align: center; color: #94a3b8; font-size: 0.75rem; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="brand">NFS Manager MCP</div>
+        <h1>Sign in</h1>
+        <p class="subtitle">Authorize access to NFS management tools</p>
+        <div class="client-info">
+            <strong>{{ .ClientName }}</strong> is requesting access.<br>
+            Scope: {{ .Scope }}
+        </div>
+
+        {{ if .Error }}
+        <div class="error">{{ .Error }}</div>
+        {{ end }}
+
+        <form action="/oauth/login" method="post">
+            <input type="hidden" name="client_id" value="{{ .ClientID }}">
+            <input type="hidden" name="redirect_uri" value="{{ .RedirectURI }}">
+            <input type="hidden" name="scope" value="{{ .Scope }}">
+            <input type="hidden" name="state" value="{{ .State }}">
+            <input type="hidden" name="code_challenge" value="{{ .CodeChallenge }}">
+            <input type="hidden" name="code_challenge_method" value="{{ .CodeChallengeMethod }}">
+
+            <div class="field">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" value="admin" autocomplete="username" required autofocus>
+            </div>
+            <div class="field">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+            </div>
+
+            <button type="submit" class="btn">Sign in &amp; Authorize</button>
+        </form>
+        <p class="hint">Use username <strong>admin</strong> and your panel password</p>
+    </div>
+</body>
+</html>

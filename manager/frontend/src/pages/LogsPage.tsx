@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react"
 import { Button } from "@/components/ui/button"
+import { DataTable, Td, Th } from "@/components/DataTable"
 import { api, type LogEntry, type LogsQueryResult } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
@@ -199,48 +200,46 @@ export function LogsPage() {
         </select>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full min-w-[820px] text-left text-sm">
-          <thead className="border-b border-border bg-muted/50 text-muted-foreground">
+      <DataTable>
+        <thead>
+          <tr>
+            <SortTh
+              label="Time"
+              active={sort === "time"}
+              order={order}
+              onClick={() => toggleSort("time")}
+              style={{ width: "18%" }}
+            />
+            <SortTh
+              label="Level"
+              active={sort === "level"}
+              order={order}
+              onClick={() => toggleSort("level")}
+              style={{ width: "10%" }}
+            />
+            <SortTh
+              label="Source"
+              active={sort === "source"}
+              order={order}
+              onClick={() => toggleSort("source")}
+              style={{ width: "14%" }}
+            />
+            <Th style={{ width: "28%" }}>Message</Th>
+            <Th style={{ width: "30%" }}>Detail</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
             <tr>
-              <SortTh
-                label="Time"
-                active={sort === "time"}
-                order={order}
-                onClick={() => toggleSort("time")}
-              />
-              <SortTh
-                label="Level"
-                active={sort === "level"}
-                order={order}
-                onClick={() => toggleSort("level")}
-              />
-              <SortTh
-                label="Source"
-                active={sort === "source"}
-                order={order}
-                onClick={() => toggleSort("source")}
-              />
-              <th className="px-3 py-2 font-medium">Message</th>
-              <th className="px-3 py-2 font-medium">Detail</th>
+              <Td colSpan={5} className="py-8 text-center text-muted-foreground">
+                {busy ? "Loading…" : "No log events match these filters."}
+              </Td>
             </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="px-3 py-8 text-center text-muted-foreground"
-                >
-                  {busy ? "Loading…" : "No log events match these filters."}
-                </td>
-              </tr>
-            ) : (
-              rows.map((entry) => <LogRow key={entry.id} entry={entry} />)
-            )}
-          </tbody>
-        </table>
-      </div>
+          ) : (
+            rows.map((entry) => <LogRow key={entry.id} entry={entry} />)
+          )}
+        </tbody>
+      </DataTable>
 
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
         <p className="text-muted-foreground">
@@ -274,36 +273,38 @@ function SortTh({
   active,
   order,
   onClick,
+  style,
 }: {
   label: string
   active: boolean
   order: "asc" | "desc"
   onClick: () => void
+  style?: CSSProperties
 }) {
   return (
-    <th className="px-3 py-2">
+    <Th style={style}>
       <button
         type="button"
         onClick={onClick}
         className={cn(
           "inline-flex items-center gap-1 font-medium",
-          active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+          active ? "text-foreground" : "hover:text-foreground"
         )}
       >
         {label}
         {active ? <span className="text-xs">{order === "asc" ? "↑" : "↓"}</span> : null}
       </button>
-    </th>
+    </Th>
   )
 }
 
 function LogRow({ entry }: { entry: LogEntry }) {
   return (
     <tr className="border-b border-border last:border-0 align-top">
-      <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
+      <Td className="whitespace-nowrap text-xs text-muted-foreground">
         {new Date(entry.time).toLocaleString()}
-      </td>
-      <td className="px-3 py-2">
+      </Td>
+      <Td>
         <span
           className={cn(
             "inline-flex rounded-md px-2 py-0.5 text-xs uppercase",
@@ -316,18 +317,18 @@ function LogRow({ entry }: { entry: LogEntry }) {
         >
           {entry.level}
         </span>
-      </td>
-      <td className="px-3 py-2 font-mono text-xs">{entry.source}</td>
-      <td className="px-3 py-2">{entry.message}</td>
-      <td className="max-w-[280px] px-3 py-2">
+      </Td>
+      <Td className="font-mono text-xs">{entry.source}</Td>
+      <Td>{entry.message}</Td>
+      <Td>
         {entry.detail ? (
-          <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-xs text-muted-foreground">
+          <pre className="whitespace-pre-wrap font-mono text-xs text-muted-foreground">
             {entry.detail}
           </pre>
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
-      </td>
+      </Td>
     </tr>
   )
 }

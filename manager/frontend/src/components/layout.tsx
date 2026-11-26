@@ -11,6 +11,7 @@ const links = [
   { to: "/reports", label: "Reports" },
   { to: "/logs", label: "Logs" },
   { to: "/tokens", label: "Tokens" },
+  { to: "/mcp-admin", label: "MCP" },
   { to: "/users", label: "Users" },
   { to: "/settings", label: "Settings" },
 ]

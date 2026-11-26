@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import Select from "react-select"
 import CreatableSelect from "react-select/creatable"
 import { Button } from "@/components/ui/button"
+import { DataTable, Td, Th } from "@/components/DataTable"
 import { api, type APIToken } from "@/lib/api"
 import { selectStyles, selectTheme, type SelectOption } from "@/lib/selectStyles"
 
@@ -175,49 +176,47 @@ export function TokensPage() {
         </Button>
       </form>
 
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full min-w-[720px] text-left text-sm">
-          <thead className="border-b border-border bg-muted/50 text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2">Name</th>
-              <th className="px-3 py-2">Prefix</th>
-              <th className="px-3 py-2">CIDRs</th>
-              <th className="px-3 py-2">Scopes</th>
-              <th className="px-3 py-2">Enabled</th>
-              <th className="px-3 py-2" />
+      <DataTable>
+        <thead>
+          <tr>
+            <Th style={{ width: "16%" }}>Name</Th>
+            <Th style={{ width: "14%" }}>Prefix</Th>
+            <Th style={{ width: "18%" }}>CIDRs</Th>
+            <Th style={{ width: "22%" }}>Scopes</Th>
+            <Th style={{ width: "10%" }}>Enabled</Th>
+            <Th style={{ width: "20%" }}>Actions</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {tokens.map((tok) => (
+            <tr key={tok.id} className="border-b border-border last:border-0">
+              <Td>{tok.name}</Td>
+              <Td className="font-mono text-xs">{tok.tokenPrefix}…</Td>
+              <Td className="font-mono text-xs">{tok.allowedCidrs}</Td>
+              <Td className="text-xs">{tok.scopes}</Td>
+              <Td>{tok.enabled ? "yes" : "no"}</Td>
+              <Td>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void toggleEnabled(tok)}
+                  >
+                    {tok.enabled ? "Disable" : "Enable"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => void remove(tok.id)}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </Td>
             </tr>
-          </thead>
-          <tbody>
-            {tokens.map((tok) => (
-              <tr key={tok.id} className="border-b border-border last:border-0">
-                <td className="px-3 py-2">{tok.name}</td>
-                <td className="px-3 py-2 font-mono text-xs">{tok.tokenPrefix}…</td>
-                <td className="px-3 py-2 font-mono text-xs">{tok.allowedCidrs}</td>
-                <td className="px-3 py-2 text-xs">{tok.scopes}</td>
-                <td className="px-3 py-2">{tok.enabled ? "yes" : "no"}</td>
-                <td className="px-3 py-2">
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void toggleEnabled(tok)}
-                    >
-                      {tok.enabled ? "Disable" : "Enable"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => void remove(tok.id)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </DataTable>
     </div>
   )
 }

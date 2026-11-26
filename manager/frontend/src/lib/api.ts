@@ -80,6 +80,32 @@ export type AppSettings = {
 export type PublicConfig = {
   swaggerEnabled: boolean
   panelAllowedCidrs: string
+  mcpEnabled?: boolean
+}
+
+export type MCPSettings = {
+  enabled: boolean
+  allowWrite: boolean
+  publicBaseUrl: string
+}
+
+export type MCPSession = {
+  id: number
+  clientName: string
+  clientId: string
+  scope: string
+  createdAt: string
+  expiresAt: string
+  lastUsedAt?: string | null
+  revoked: boolean
+}
+
+export type MCPClient = {
+  id: number
+  clientId: string
+  clientName: string
+  redirectUris?: string[] | string
+  createdAt: string
 }
 
 export type DashboardRangePreset =
@@ -462,6 +488,24 @@ export const api = {
   },
   deleteToken(id: number) {
     return http.delete(`/api/tokens/${id}`).then(() => undefined)
+  },
+  getMCPSettings() {
+    return http.get<MCPSettings>("/api/mcp/settings").then((r) => r.data)
+  },
+  saveMCPSettings(settings: MCPSettings) {
+    return http.put<MCPSettings>("/api/mcp/settings", settings).then((r) => r.data)
+  },
+  listMCPSessions() {
+    return http.get<MCPSession[]>("/api/mcp/sessions").then((r) => r.data)
+  },
+  revokeMCPSession(id: number) {
+    return http.delete(`/api/mcp/sessions/${id}`).then(() => undefined)
+  },
+  listMCPClients() {
+    return http.get<MCPClient[]>("/api/mcp/clients").then((r) => r.data)
+  },
+  deleteMCPClient(id: number) {
+    return http.delete(`/api/mcp/clients/${id}`).then(() => undefined)
   },
 }
 

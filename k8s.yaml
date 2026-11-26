@@ -1,106 +1,349 @@
+# NFS Manager (NFSv4 + web panel) for Kubernetes
+#
+# Requirements:
+#   - privileged pod (kernel nfsd)
+#   - data volume on a real filesystem (hostPath / local PV), not OverlayFS
+#   - single replica
+#
+# Customize before apply:
+#   - metadata.namespace / nodeSelector
+#   - hostPath paths (nfs-data-pv, nfs-manager-pv)
+#   - Secret stringData.password
+#   - Service type (ClusterIP / NodePort / LoadBalancer)
+#
+# Apply:
+#   kubectl apply -f k8s.yaml
+#   kubectl -n nfs get pods,svc,pvc
+#   kubectl -n nfs port-forward svc/nfs-panel 3000:3000
+#
+---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: nfs
+  labels:
+    app.kubernetes.io/name: nfs-server-alpine
 ---
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: nfs-exports
+  name: nfs-panel
   namespace: nfs
-data:
-  exports: |
-    /mnt  *(rw,sync,no_subtree_check,fsid=0,crossmnt,no_root_squash)
-    /mnt/test *(rw,sync,no_subtree_check)
-
+  labels:
+    app.kubernetes.io/name: nfs-server-alpine
+    app.kubernetes.io/component: panel
+type: Opaque
+stringData:
+  # Change this before production use
+  password: changeme
+---
+# Persistent data for NFSv4 exports (fsid=0 lives under /mnt).
+# hostPath keeps a real FS on the node; change path / node as needed.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-data-pv
+  labels:
+    app.kubernetes.io/name: nfs-server-alpine
+    type: nfs-data
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-data-local
+  hostPath:
+    path: /mnt/CONTENT
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-data
+  namespace: nfs
+  labels:
+    app.kubernetes.io/name: nfs-server-alpine
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: nfs-data-local
+  resources:
+    requests:
+      storage: 100Gi
+  selector:
+    matchLabels:
+      type: nfs-data
+---
+# SQLite + panel state (exports DB, tokens, metrics, settings)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-manager-pv
+  labels:
+    app.kubernetes.io/name: nfs-server-alpine
+    type: nfs-manager
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-manager-local
+  hostPath:
+    path: /var/lib/nfs-manager-k8s
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-manager
+  namespace: nfs
+  labels:
+    app.kubernetes.io/name: nfs-server-alpine
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: nfs-manager-local
+  resources:
+    requests:
+      storage: 5Gi
+  selector:
+    matchLabels:
+      type: nfs-manager
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nfs-server
   namespace: nfs
+  labels:
+    app.kubernetes.io/name: nfs-server-alpine
+    app.kubernetes.io/component: server
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
-    matchLabels: { app: nfs-server }
+    matchLabels:
+      app: nfs-server
   template:
     metadata:
-      labels: { app: nfs-server }
+      labels:
+        app: nfs-server
+        app.kubernetes.io/name: nfs-server-alpine
+        app.kubernetes.io/component: server
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: "edge-de1"   # 👈 replace with your node name
+      # Pin to the node that owns the hostPath volumes (uncomment / set):
+      # nodeSelector:
+      #   kubernetes.io/hostname: edge-de1
+      terminationGracePeriodSeconds: 60
       containers:
         - name: nfs
           image: izetmolla/nfs-server-alpine:latest
-          imagePullPolicy: Always            # 👈 add this
+          imagePullPolicy: Always
           env:
             - name: SHARED_DIRECTORY
               value: /mnt
+            - name: PANEL_ADDR
+              value: ":3000"
+            - name: MANAGER_DB
+              value: /var/lib/nfs-manager/manager.db
+            - name: PANEL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nfs-panel
+                  key: password
           securityContext:
             privileged: true
           ports:
             - name: nfs
               containerPort: 2049
               protocol: TCP
+            - name: panel
+              containerPort: 3000
+              protocol: TCP
           volumeMounts:
             - name: data
               mountPath: /mnt
-            - name: exports
-              mountPath: /etc/exports
-              subPath: exports
+            - name: manager
+              mountPath: /var/lib/nfs-manager
+          readinessProbe:
+            tcpSocket:
+              port: panel
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: panel
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
       volumes:
         - name: data
-          hostPath:
-            path: /mnt/CONTENT   # 👈 add this
-            type: DirectoryOrCreate
-        - name: exports
-          configMap:
-            name: nfs-exports
+          persistentVolumeClaim:
+            claimName: nfs-data
+        - name: manager
+          persistentVolumeClaim:
+            claimName: nfs-manager
 ---
+# In-cluster NFSv4 (TCP 2049). Clients use:
+#   server: nfs-server.nfs.svc.cluster.local
+#   path:   /   (or a subdir under SHARED_DIRECTORY / fsid=0)
 apiVersion: v1
 kind: Service
 metadata:
   name: nfs-server
   namespace: nfs
+  labels:
+    app.kubernetes.io/name: nfs-server-alpine
+    app.kubernetes.io/component: nfs
 spec:
-  type: NodePort
-  clusterIP: 10.96.131.53
+  type: ClusterIP
   selector:
     app: nfs-server
   ports:
-    - name: nfs-server
+    - name: nfs
       protocol: TCP
       port: 2049
-      targetPort: 2049
-      # nodePort: 30013
-
-
-# container example
+      targetPort: nfs
 ---
+# Manager panel + REST API (+ Swagger when enabled)
+# ClusterIP + port-forward for labs; switch to NodePort/LoadBalancer to expose.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nfs-panel
+  namespace: nfs
+  labels:
+    app.kubernetes.io/name: nfs-server-alpine
+    app.kubernetes.io/component: panel
+spec:
+  type: ClusterIP
+  # type: NodePort
+  # type: LoadBalancer
+  selector:
+    app: nfs-server
+  ports:
+    - name: panel
+      protocol: TCP
+      port: 3000
+      targetPort: panel
+      # nodePort: 30030
+---
+# Optional NodePort for NFS from outside the cluster (same node as the pod).
+# Prefer LoadBalancer or a metalLB VIP when available.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nfs-server-external
+  namespace: nfs
+  labels:
+    app.kubernetes.io/name: nfs-server-alpine
+    app.kubernetes.io/component: nfs-external
+spec:
+  type: NodePort
+  selector:
+    app: nfs-server
+  ports:
+    - name: nfs
+      protocol: TCP
+      port: 2049
+      targetPort: nfs
+      # nodePort: 32049
+---
+# Example in-cluster client: mounts NFSv4 and writes a test file.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ubuntu-nfs
+  name: nfs-client-example
   namespace: nfs
+  labels:
+    app.kubernetes.io/name: nfs-server-alpine
+    app.kubernetes.io/component: example-client
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ubuntu-nfs
+      app: nfs-client-example
   template:
     metadata:
       labels:
-        app: ubuntu-nfs
+        app: nfs-client-example
+        app.kubernetes.io/name: nfs-server-alpine
+        app.kubernetes.io/component: example-client
     spec:
       containers:
-        - name: ubuntu
+        - name: client
           image: ubuntu:24.04
-          command: ["bash", "-c", "sleep infinity"]
-          volumeMounts:
-            - name: nfs-vol
-              mountPath: /mnt/test
-      volumes:
-        - name: nfs-vol
-          nfs:
-            server: 10.96.131.53
-            path: /test   # NFSv4 path is RELATIVE to fsid=0 (/mnt) -> /mnt/test
+          securityContext:
+            privileged: true
+          env:
+            - name: NFS_SERVER
+              value: nfs-server.nfs.svc.cluster.local
+            - name: NFS_PATH
+              value: /
+            - name: NFS_MOUNT
+              value: /mnt/nfs
+          command:
+            - bash
+            - -lc
+            - |
+              set -euo pipefail
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update -qq
+              apt-get install -y -qq nfs-common >/dev/null
+              mkdir -p "${NFS_MOUNT}"
+              echo "Waiting for NFS at ${NFS_SERVER}:${NFS_PATH} ..."
+              for i in $(seq 1 30); do
+                if mount -t nfs4 -o nfsvers=4,proto=tcp,port=2049 \
+                    "${NFS_SERVER}:${NFS_PATH}" "${NFS_MOUNT}"; then
+                  echo "Mounted NFS successfully"
+                  break
+                fi
+                echo "  attempt ${i} failed, retrying..."
+                sleep 2
+              done
+              if ! mountpoint -q "${NFS_MOUNT}"; then
+                echo "ERROR: could not mount NFS share"
+                sleep infinity
+              fi
+              mkdir -p "${NFS_MOUNT}/k8s-example"
+              stamp=$(date -u +%Y%m%dT%H%M%SZ)
+              echo "hello from k8s @ ${stamp}" > "${NFS_MOUNT}/k8s-example/hello.txt"
+              echo "--- NFS mount ---"
+              ls -la "${NFS_MOUNT}"
+              echo "--- k8s-example ---"
+              ls -la "${NFS_MOUNT}/k8s-example"
+              echo "NFS write test OK"
+              sleep infinity
+---
+# Alternative: mount via the Kubernetes nfs volume plugin (no privileged client).
+# Uncomment and apply separately if preferred over the shell-mount example above.
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: nfs-client-volume
+#   namespace: nfs
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels: { app: nfs-client-volume }
+#   template:
+#     metadata:
+#       labels: { app: nfs-client-volume }
+#     spec:
+#       containers:
+#         - name: app
+#           image: ubuntu:24.04
+#           command: ["bash", "-c", "sleep infinity"]
+#           volumeMounts:
+#             - name: nfs-vol
+#               mountPath: /mnt/nfs
+#       volumes:
+#         - name: nfs-vol
+#           nfs:
+#             server: nfs-server.nfs.svc.cluster.local
+#             path: /

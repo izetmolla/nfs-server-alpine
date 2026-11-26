@@ -1,0 +1,305 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "NFS Manager API",
+    "description": "Management API for NFSv4 exports, storage reports, settings, and IP-scoped API tokens.",
+    "version": "1.0"
+  },
+  "basePath": "/api",
+  "securityDefinitions": {
+    "BearerAuth": {
+      "type": "apiKey",
+      "name": "Authorization",
+      "in": "header",
+      "description": "Use `Bearer <panel-password>` or `Bearer nfs_<api-token>`"
+    }
+  },
+  "security": [{ "BearerAuth": [] }],
+  "tags": [
+    { "name": "auth" },
+    { "name": "exports" },
+    { "name": "reports" },
+    { "name": "tokens" },
+    { "name": "settings" },
+    { "name": "logs" },
+    { "name": "network" },
+    { "name": "filesystem" }
+  ],
+  "paths": {
+    "/login": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Panel login",
+        "security": [],
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": { "password": { "type": "string" } }
+            }
+          }
+        ],
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/exports": {
+      "get": {
+        "tags": ["exports"],
+        "summary": "List exports",
+        "responses": { "200": { "description": "OK" } }
+      },
+      "post": {
+        "tags": ["exports"],
+        "summary": "Create export",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "schema": { "$ref": "#/definitions/ExportInput" }
+          }
+        ],
+        "responses": { "201": { "description": "Created" }, "400": { "description": "Bad request" } }
+      }
+    },
+    "/exports/{id}": {
+      "get": {
+        "tags": ["exports"],
+        "summary": "Get export",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "type": "integer" }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "tags": ["exports"],
+        "summary": "Update export",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "type": "integer" },
+          { "in": "body", "name": "body", "schema": { "$ref": "#/definitions/ExportInput" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      },
+      "delete": {
+        "tags": ["exports"],
+        "summary": "Delete export",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "type": "integer" }],
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/exports/apply": {
+      "post": {
+        "tags": ["exports"],
+        "summary": "Apply exports to NFS",
+        "responses": { "200": { "description": "OK" }, "400": { "description": "Apply failed" } }
+      }
+    },
+    "/exports/preview": {
+      "post": {
+        "tags": ["exports"],
+        "summary": "Preview export line",
+        "parameters": [
+          { "in": "body", "name": "body", "schema": { "$ref": "#/definitions/ExportInput" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/exports/option-catalog": {
+      "get": {
+        "tags": ["exports"],
+        "summary": "NFS option catalog for UI selects",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/public-config": {
+      "get": {
+        "tags": ["settings"],
+        "summary": "Public panel config (swagger flag)",
+        "security": [],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/dashboard": {
+      "get": {
+        "tags": ["reports"],
+        "summary": "Live NFS panel dashboard snapshot",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/reports/storage": {
+      "get": {
+        "tags": ["reports"],
+        "summary": "Storage usage report",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/reports/quotas": {
+      "get": {
+        "tags": ["reports"],
+        "summary": "Per-export directory quota usage",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/reports/quotas/check": {
+      "post": {
+        "tags": ["reports"],
+        "summary": "Evaluate quotas and fire postbacks for newly full exports",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/exports/{id}/usage": {
+      "get": {
+        "tags": ["exports"],
+        "summary": "Directory usage and quota status for one export",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "type": "integer" }],
+        "responses": { "200": { "description": "OK" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/exports/{id}/quota": {
+      "put": {
+        "tags": ["exports"],
+        "summary": "Set export quota (0/unlimited) and postback URL",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "type": "integer" },
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "quotaBytes": { "type": "integer", "description": "0 = unlimited" },
+                "quotaPostbackUrl": { "type": "string" },
+                "unlimited": { "type": "boolean" }
+              }
+            }
+          }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/tokens": {
+      "get": {
+        "tags": ["tokens"],
+        "summary": "List API tokens",
+        "responses": { "200": { "description": "OK" } }
+      },
+      "post": {
+        "tags": ["tokens"],
+        "summary": "Create API token",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "allowedCidrs": { "type": "string" },
+                "scopes": { "type": "array", "items": { "type": "string" } },
+                "expiresAt": { "type": "string", "format": "date-time" }
+              }
+            }
+          }
+        ],
+        "responses": { "201": { "description": "Created with rawToken once" } }
+      }
+    },
+    "/tokens/{id}": {
+      "patch": {
+        "tags": ["tokens"],
+        "summary": "Update token",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "type": "integer" }],
+        "responses": { "200": { "description": "OK" } }
+      },
+      "delete": {
+        "tags": ["tokens"],
+        "summary": "Delete token",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "type": "integer" }],
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    },
+    "/settings": {
+      "get": {
+        "tags": ["settings"],
+        "summary": "Get settings",
+        "responses": { "200": { "description": "OK" } }
+      },
+      "put": {
+        "tags": ["settings"],
+        "summary": "Save settings",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/logs": {
+      "get": {
+        "tags": ["logs"],
+        "summary": "List live logs",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/network/interfaces": {
+      "get": {
+        "tags": ["network"],
+        "summary": "Detect host interfaces and CIDR suggestions",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/filesystem": {
+      "get": {
+        "tags": ["filesystem"],
+        "summary": "List directories under allowed browse roots",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "type": "string",
+            "description": "Absolute path under BROWSE_ROOTS / SHARED_DIRECTORY"
+          }
+        ],
+        "responses": { "200": { "description": "OK" }, "400": { "description": "Bad request" } }
+      }
+    },
+    "/filesystem/mkdir": {
+      "post": {
+        "tags": ["filesystem"],
+        "summary": "Create a directory under allowed browse roots",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "type": "object",
+              "properties": { "path": { "type": "string" } },
+              "required": ["path"]
+            }
+          }
+        ],
+        "responses": { "201": { "description": "Created" }, "400": { "description": "Bad request" } }
+      }
+    }
+  },
+  "definitions": {
+    "ExportInput": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "clients": { "type": "string" },
+        "accessMode": { "type": "string", "enum": ["rw", "ro"] },
+        "commitMode": { "type": "string", "enum": ["sync", "async"] },
+        "writeDelay": { "type": "string", "enum": ["wdelay", "no_wdelay"] },
+        "subtreeCheck": { "type": "string" },
+        "portMode": { "type": "string" },
+        "lockMode": { "type": "string" },
+        "hideMode": { "type": "string" },
+        "crossmnt": { "type": "boolean" },
+        "rootSquash": { "type": "string" },
+        "allSquash": { "type": "string" },
+        "security": { "type": "string" },
+        "fsid": { "type": "integer" },
+        "anonUid": { "type": "integer" },
+        "anonGid": { "type": "integer" },
+        "enabled": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -1,15 +1,70 @@
 services:
   nfs-server:
     image: izetmolla/nfs-server-alpine:latest
+    build: .
     container_name: nfs-server
-    privileged: true                      # required to run the NFS server
+    privileged: true
     restart: unless-stopped
     environment:
-      SHARED_DIRECTORY: /mnt              # same as in your k8s spec
-    ports:
-      - "2049:2049/tcp"                   # NFSv4 (TCP/2049)
-      - "3000:3000/tcp"                   # UI/API
+      SHARED_DIRECTORY: /mnt
+      PANEL_PASSWORD: changeme
+      PANEL_ADDR: ":3000"
+      MANAGER_DB: /var/lib/nfs-manager/manager.db
     volumes:
-      - /mnt/hello:/mnt                   # host backing store -> container /mnt
-      - ./exports:/etc/exports:ro         # bind a local file to /etc/exports
-      # - /lib/modules:/lib/modules:ro    # optional; only if your host needs it
+      - /mnt/hello:/mnt
+      - nfs-manager-data:/var/lib/nfs-manager
+    networks:
+      VLAN200:
+        ipv4_address: 192.168.200.188
+
+  example-app:
+    image: ubuntu:latest
+    container_name: example-app
+    privileged: true
+    depends_on:
+      - nfs-server
+    environment:
+      NFS_SERVER: 192.168.200.188
+      NFS_PATH: /
+      NFS_MOUNT: /mnt/nfs
+    networks:
+      VLAN200:
+    command:
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq
+        apt-get install -y -qq nfs-common >/dev/null
+        mkdir -p "$${NFS_MOUNT}"
+        echo "Waiting for NFS at $${NFS_SERVER}:$${NFS_PATH} ..."
+        for i in $$(seq 1 30); do
+          if mount -t nfs4 -o nfsvers=4,proto=tcp,port=2049 "$${NFS_SERVER}:$${NFS_PATH}" "$${NFS_MOUNT}"; then
+            echo "Mounted NFS successfully"
+            break
+          fi
+          echo "  attempt $$i failed, retrying..."
+          sleep 2
+        done
+        if ! mountpoint -q "$${NFS_MOUNT}"; then
+          echo "ERROR: could not mount NFS share"
+          sleep infinity
+        fi
+        mkdir -p "$${NFS_MOUNT}/example-app"
+        stamp=$$(date -u +%Y%m%dT%H%M%SZ)
+        echo "hello from example-app @ $$stamp" > "$${NFS_MOUNT}/example-app/hello.txt"
+        echo "ready" > "$${NFS_MOUNT}/example-app/ready-$$stamp.txt"
+        echo "--- NFS mount contents ---"
+        ls -la "$${NFS_MOUNT}"
+        echo "--- example-app dir ---"
+        ls -la "$${NFS_MOUNT}/example-app"
+        echo "NFS write test OK"
+        sleep infinity
+
+networks:
+  VLAN200:
+    external: true
+
+volumes:
+  nfs-manager-data:

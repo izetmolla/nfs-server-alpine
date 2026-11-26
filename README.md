@@ -1,306 +1,306 @@
 # nfs-server-alpine
 
-A handy NFS Server image comprising Alpine Linux and NFS v4 only, over TCP on port 2049.
+Lightweight **NFSv4** server on Alpine Linux, with a built-in **web management panel** for exports, quotas, reports, API tokens, and live status.
 
-## Overview
+**Author:** [Izet Molla](https://github.com/izetmolla) · [github.com/izetmolla/nfs-server-alpine](https://github.com/izetmolla/nfs-server-alpine)
 
-The image comprises of;
+| Port | Service |
+| --- | --- |
+| **2049/tcp** | NFSv4 |
+| **3000/tcp** | Manager panel + REST API (+ Swagger) |
 
-- [Alpine Linux](http://www.alpinelinux.org/) v3.8.1. Alpine Linux is a security-oriented, lightweight Linux distribution based on [musl libc](https://www.musl-libc.org/) (v1.1.19) and [BusyBox](https://www.busybox.net/).
-- NFS v4 only, over TCP on port 2049. Rpcbind is enabled for now to overcome a bug with slow startup, it shouldn't be required.
+Image: `izetmolla/nfs-server-alpine:latest`  
+Base: Alpine **3.24.4** · NFSv4 only (no UDP / no v2)
 
-[Confd](https://www.confd.io/) is no longer used, making the image simpler & smaller and providing wider device compatibility.
+---
 
-For ARM versions, tag 6-arm is based on [hypriot/rpi-alpine](https://github.com/hypriot/rpi-alpine) and tag 7 onwards based on the stock Alpine image. Tag 7 uses confd v0.16.0.
+## Features
 
-For previous tags 7, 8 & 9;
+- NFSv4 over TCP (`fsid=0` pseudo-root)
+- Web UI to create/edit exports with typed NFS options (no freehand export lines on forms)
+- Directory browser for export paths
+- Storage reports + **per-export quotas** (unlimited by default) with **HTTP postback** when full
+- Dashboard metrics (auth / apply / API activity) with time-range filters
+- Live logs, settings, panel firewall CIDRs, Swagger toggle
+- IP-scoped API tokens for automation
 
-- Alpine Linux v3.7.0
-- Musl v1.1.18
-- Confd v0.14.0
+---
 
-For previous tag 6;
+## Quick start (Docker)
 
-- Alpine Linux v3.6.0
-- Musl v1.1.15
-
-For previous tag 5;
-
-- Confd v0.13.0
-
-For previous tag 4;
-
-- Alpine Linux v3.5
-- Confd v0.12.0-dev
-
-**Note:** There were some serious flaws with image versions 3 and earlier. Please use **4** or later. The earlier version are only here in case they are used in automated workflows.
-
-When run, this container will make whatever directory is specified by the environment variable SHARED_DIRECTORY available to NFS v4 clients.
-
-`docker run -d --name nfs --privileged -v /some/where/fileshare:/nfsshare -e SHARED_DIRECTORY=/nfsshare izetmolla/nfs-server-alpine:latest`
-
-Add `--net=host` or `-p 2049:2049` to make the shares externally accessible via the host networking stack. This isn't necessary if using [Rancher](https://rancher.com/) or linking containers in some other way.
-
-Adding `-e READ_ONLY` will cause the exports file to contain `ro` instead of `rw`, allowing only read access by clients.
-
-Adding `-e SYNC=true` will cause the exports file to contain `sync` instead of `async`, enabling synchronous mode. Check the exports man page for more information: https://linux.die.net/man/5/exports.
-
-Adding `-e PERMITTED="10.11.99.*"` will permit only hosts with an IP address starting 10.11.99 to mount the file share.
-
-Due to the `fsid=0` parameter set in the **/etc/exports file**, there's no need to specify the folder name when mounting from a client. For example, this works fine even though the folder being mounted and shared is /nfsshare:
-
-`sudo mount -v 10.11.12.101:/ /some/where/here`
-
-To be a little more explicit:
-
-`sudo mount -v -o vers=4,loud 10.11.12.101:/ /some/where/here`
-
-To _unmount_:
-
-`sudo umount /some/where/here`
-
-The /etc/exports file contains these parameters unless modified by the environment variables listed above:
-
-`*(rw,fsid=0,async,no_subtree_check,no_auth_nlm,insecure,no_root_squash)`
-
-Note that the `showmount` command won't work against the server as rpcbind isn't running.
-
-### Privileged Mode
-
-You'll note above with the `docker run` command that privileged mode is required. Yes, this is a security risk but an unavoidable one it seems. You could try these instead: `--cap-add SYS_ADMIN --cap-add SETPCAP --security-opt=no-new-privileges` but I've not had any luck with them myself. You may fare better with your own combination of Docker and OS. The SYS_ADMIN capability is very, very broad in any case and almost as risky as privileged mode.
-
-See the following sub-sections for information on doing the same in non-interactive environments.
-
-#### Kubernetes
-
-As reported here https://github.com/izetmolla/nfs-server-alpine/issues/8 it appears Kubernetes requires the `privileged: true` option to be set:
-
-```
-spec:
-  containers:
-  - name: ...
-    image: ...
-    securityContext:
-      privileged: true
+```bash
+docker run -d --name nfs \
+  --privileged \
+  -p 2049:2049 \
+  -p 3000:3000 \
+  -v /data/nfs:/mnt \
+  -v nfs-manager-data:/var/lib/nfs-manager \
+  -e SHARED_DIRECTORY=/mnt \
+  -e PANEL_PASSWORD=changeme \
+  izetmolla/nfs-server-alpine:latest
 ```
 
-To use capabilities instead:
+Open the panel: [http://localhost:3000](http://localhost:3000)  
+Login password: value of `PANEL_PASSWORD` (example above: `changeme`).
 
-```
-spec:
-  containers:
-  - name: ...
-    image: ...
-    securityContext:
-      capabilities:
-        add: ["SYS_ADMIN", "SETPCAP"]
+Mount from a client (NFSv4 root = `SHARED_DIRECTORY`):
+
+```bash
+sudo mkdir -p /mnt/nfs
+sudo mount -t nfs4 -o nfsvers=4,proto=tcp HOST:/ /mnt/nfs
 ```
 
-Note that AllowPrivilegeEscalation is automatically set to true when privileged mode is set to true or the SYS_ADMIN capability added.
+Unmount:
 
-#### Docker Compose v2/v3 or Rancher v1.x
-
-When using Docker Compose you can specify privileged mode like so:
-
-```
-privileged: true
+```bash
+sudo umount /mnt/nfs
 ```
 
-To use capabilities instead:
+> **Privileged mode** is required so the container can run kernel `nfsd`. Prefer a dedicated host/path volume (OverlayFS often cannot be exported).
 
-```
-cap_add:
-  - SYS_ADMIN
-  - SETPCAP
-```
+---
 
-### RancherOS
+## Docker Compose
 
-You may need to do this at the CLI to get things working:
+Example layout (adjust host path / network to your environment):
 
-```
-sudo ros service enable kernel-headers
-sudo ros service up kernel-headers
-```
+```yaml
+services:
+  nfs-server:
+    image: izetmolla/nfs-server-alpine:latest
+    build: .
+    container_name: nfs-server
+    privileged: true
+    restart: unless-stopped
+    ports:
+      - "2049:2049"
+      - "3000:3000"
+    environment:
+      SHARED_DIRECTORY: /mnt
+      PANEL_PASSWORD: changeme
+      PANEL_ADDR: ":3000"
+      MANAGER_DB: /var/lib/nfs-manager/manager.db
+    volumes:
+      - /data/nfs:/mnt
+      - nfs-manager-data:/var/lib/nfs-manager
 
-Alternatively you can add this to the host's **cloud-config.yml** (or user data on the cloud):
+  # Optional smoke client that mounts the share and writes a test file
+  example-app:
+    image: ubuntu:latest
+    privileged: true
+    depends_on: [nfs-server]
+    environment:
+      NFS_SERVER: nfs-server   # or the server IP
+      NFS_PATH: /
+      NFS_MOUNT: /mnt/nfs
+    command:
+      - bash
+      - -lc
+      - |
+        apt-get update -qq && apt-get install -y -qq nfs-common
+        mkdir -p "$$NFS_MOUNT"
+        mount -t nfs4 -o nfsvers=4,proto=tcp "$$NFS_SERVER:$$NFS_PATH" "$$NFS_MOUNT"
+        mkdir -p "$$NFS_MOUNT/example-app"
+        echo "ok $$(date -Is)" > "$$NFS_MOUNT/example-app/hello.txt"
+        ls -la "$$NFS_MOUNT/example-app"
+        sleep infinity
 
-```
-#cloud-config
-rancher:
-  services_include:
-    kernel-headers: true
-```
-
-RancherOS also uses overlayfs for Docker so please read the next section.
-
-### OverlayFS
-
-OverlayFS does not support NFS export so please volume mount into your NFS container from an alternative (hopefully one is available).
-
-On RancherOS the **/home**, **/media** and **/mnt** file systems are good choices as these are ext4.
-
-### Other Operating Systems
-
-You may need to ensure the **nfs** and **nfsd** kernel modules are loaded by running `modprobe nfs nfsd`.
-
-### Host Mode Networking & Rancher DNS
-
-You'll need to use this label if you are using host network mode and want other services to resolve the NFS service's name via Rancher DNS:
-
-```
-  labels:
-    io.rancher.container.dns: 'true'
-```
-
-### Mounting Within a Container
-
-The container requires the SYS_ADMIN capability, or, less securely, to be run in privileged mode.
-
-### Multiple Shares
-
-This image can be used to export and share multiple directories with a little modification. Be aware that NFSv4 dictates that the additional shared directories are subdirectories of the root share specified by SHARED_DIRECTORY.
-
-> Note its far easier to volume mount multiple directories as subdirectories of the root/first and share the root.
-
-To share multiple directories you'll need to mount additional volumes and specify additional environment variables in your docker run command. Here's an example:
-```
-docker run -d --name nfs --privileged -v /some/where/fileshare:/nfsshare -v /some/where/else:/nfsshare/another -e SHARED_DIRECTORY=/nfsshare -e SHARED_DIRECTORY_2=/nfsshare/another izetmolla/nfs-server-alpine:latest
+volumes:
+  nfs-manager-data:
 ```
 
-You should then modify the **nfsd.sh** file to process the extra environment variables and add entries to the exports file. I've already included a working example to get you started:
-
-```
-if [ ! -z "${SHARED_DIRECTORY_2}" ]; then
-  echo "Writing SHARED_DIRECTORY_2 to /etc/exports file"
-  echo "{{SHARED_DIRECTORY_2}} {{PERMITTED}}({{READ_ONLY}},{{SYNC}},no_subtree_check,no_auth_nlm,insecure,no_root_squash)" >> /etc/exports
-  /bin/sed -i "s@{{SHARED_DIRECTORY_2}}@${SHARED_DIRECTORY_2}@g" /etc/exports
-fi
+```bash
+docker compose up -d --build
+docker logs -f example-app   # should show "NFS write test OK" / hello.txt
 ```
 
-You'll find you can now mount the root share as normal and the second shared directory will be available as a subdirectory. However, you should now be able to mount the second share directly too. In both cases you don't need to specify the root directory name with the mount commands. Using the `docker run` command above to start a container using this image, the two mount commands would be:
+The repo [docker-compose.yaml](https://raw.githubusercontent.com/izetmolla/nfs-server-alpine/main/docker-compose.yaml) may pin a custom network/IP for lab use — change it to match your network.
 
-```
-sudo mount -v 10.11.12.101:/ /mnt/one
-sudo mount -v 10.11.12.101:/another /mnt/two
-```
+---
 
-You might want to make the root share read only, or even make it inaccessible, to encourage users to only mount the correct, more specific shares directly. To do so you'll need to modify the exports file so the root share doesn't get configured based on the values assigned to the PERMITTED or SYNC environment variables.
+## Kubernetes
 
-### What Good Looks Like
+Full sample manifests are in [k8s.yaml](https://raw.githubusercontent.com/izetmolla/nfs-server-alpine/main/k8s.yaml): Namespace, panel Secret, hostPath PVs/PVCs for data + manager DB, privileged Deployment, ClusterIP/NodePort Services, and an optional NFS client example.
 
-A successful server start should produce log output like this:
+Important points:
 
-```
-Writing SHARED_DIRECTORY to /etc/exports file
-The PERMITTED environment variable is unset or null, defaulting to '*'.
-This means any client can mount.
-The READ_ONLY environment variable is unset or null, defaulting to 'rw'.
-Clients have read/write access.
-The SYNC environment variable is unset or null, defaulting to 'async' mode.
-Writes will not be immediately written to disk.
-Displaying /etc/exports contents:
-/nfsshare *(rw,fsid=0,async,no_subtree_check,no_auth_nlm,insecure,no_root_squash)
+1. Pod must run **`privileged: true`** (kernel `nfsd`).
+2. Data volume must be a real filesystem (`hostPath` / local PV) — not OverlayFS.
+3. Single replica with `Recreate` strategy.
+4. Expose **2049** (NFS) and **3000** (panel); set `PANEL_PASSWORD` via Secret.
+5. Do **not** mount a ConfigMap over `/etc/exports` — the panel owns that file.
 
-Starting rpcbind...
-Displaying rpcbind status...
-   program version netid     address                service    owner
-    100000    4    tcp6      ::.0.111               -          superuser
-    100000    3    tcp6      ::.0.111               -          superuser
-    100000    4    udp6      ::.0.111               -          superuser
-    100000    3    udp6      ::.0.111               -          superuser
-    100000    4    tcp       0.0.0.0.0.111          -          superuser
-    100000    3    tcp       0.0.0.0.0.111          -          superuser
-    100000    2    tcp       0.0.0.0.0.111          -          superuser
-    100000    4    udp       0.0.0.0.0.111          -          superuser
-    100000    3    udp       0.0.0.0.0.111          -          superuser
-    100000    2    udp       0.0.0.0.0.111          -          superuser
-    100000    4    local     /var/run/rpcbind.sock  -          superuser
-    100000    3    local     /var/run/rpcbind.sock  -          superuser
-Starting NFS in the background...
-rpc.nfsd: knfsd is currently down
-rpc.nfsd: Writing version string to kernel: -2 -3 +4
-rpc.nfsd: Created AF_INET TCP socket.
-rpc.nfsd: Created AF_INET6 TCP socket.
-Exporting File System...
-exporting *:/nfsshare
-/nfsshare     	<world>
-Starting Mountd in the background...
-Startup successful.
+```bash
+# Edit hostPath paths, nodeSelector, and Secret password first
+kubectl apply -f https://raw.githubusercontent.com/izetmolla/nfs-server-alpine/main/k8s.yaml
+kubectl -n nfs get pods,svc,pvc
+kubectl -n nfs port-forward svc/nfs-panel 3000:3000
 ```
 
-### What Good Looks Like - Confd Versions
+In-cluster client mount (path is **relative to the NFSv4 root** / `fsid=0`):
 
-```
-The PERMITTED environment variable is missing or null, defaulting to '*'.
-Any client can mount.
-The READ_ONLY environment variable is missing or null, defaulting to 'rw'
-Clients have read/write access.
-The SYNC environment variable is missing or null, defaulting to 'async'.
-Writes will not be immediately written to disk.
-Starting Confd population of files...
-confd 0.14.0 (Git SHA: 9fab9634, Go Version: go1.9.1)
-2018-05-07T18:24:39Z d62d37258311 /usr/bin/confd[14]: INFO Backend set to env
-2018-05-07T18:24:39Z d62d37258311 /usr/bin/confd[14]: INFO Starting confd
-2018-05-07T18:24:39Z d62d37258311 /usr/bin/confd[14]: INFO Backend source(s) set to
-2018-05-07T18:24:39Z d62d37258311 /usr/bin/confd[14]: INFO /etc/exports has md5sum 4f1bb7b2412ce5952ecb5ec22d8ed99d should be 92cc8fa446eef0e167648be03aba09e5
-2018-05-07T18:24:39Z d62d37258311 /usr/bin/confd[14]: INFO Target config /etc/exports out of sync
-2018-05-07T18:24:39Z d62d37258311 /usr/bin/confd[14]: INFO Target config /etc/exports has been updated
-Displaying /etc/exports contents...
-/nfsshare *(rw,fsid=0,async,no_subtree_check,no_auth_nlm,insecure,no_root_squash)
-Starting rpcbind...
-Displaying rpcbind status...
-   program version netid     address                service    owner
-    100000    4    tcp6      ::.0.111               -          superuser
-    100000    3    tcp6      ::.0.111               -          superuser
-    100000    4    udp6      ::.0.111               -          superuser
-    100000    3    udp6      ::.0.111               -          superuser
-    100000    4    tcp       0.0.0.0.0.111          -          superuser
-    100000    3    tcp       0.0.0.0.0.111          -          superuser
-    100000    2    tcp       0.0.0.0.0.111          -          superuser
-    100000    4    udp       0.0.0.0.0.111          -          superuser
-    100000    3    udp       0.0.0.0.0.111          -          superuser
-    100000    2    udp       0.0.0.0.0.111          -          superuser
-    100000    4    local     /var/run/rpcbind.sock  -          superuser
-    100000    3    local     /var/run/rpcbind.sock  -          superuser
-Starting NFS in the background...
-rpc.nfsd: knfsd is currently down
-rpc.nfsd: Writing version string to kernel: -2 -3 +4
-rpc.nfsd: Created AF_INET TCP socket.
-rpc.nfsd: Created AF_INET6 TCP socket.
-Exporting File System...
-exporting *:/nfsshare
-/nfsshare     	<world>
-Starting Mountd in the background...
-Startup successful.
+```yaml
+volumes:
+  - name: nfs-vol
+    nfs:
+      server: nfs-server.nfs.svc.cluster.local
+      path: /          # or /subdir under SHARED_DIRECTORY
 ```
 
-### Dockerfile
+---
 
-The Dockerfile used to create this image is available at the root of the file system on build.
+## Manager panel
 
+### Login
+
+1. Browse to `http://<host>:3000`
+2. Enter `PANEL_PASSWORD`
+3. Session cookie + optional Bearer password for API tools
+
+### What you can do
+
+| Area | Purpose |
+| --- | --- |
+| **Dashboard** | Live NFS health, clients, auth/apply counters, charts (default last 7 days) |
+| **Storages** | List exports · create/edit with typed NFS options · browse/create folders |
+| **Reports** | Filesystem usage + per-export **quotas** · “Check quotas now” |
+| **Logs** | Searchable table with level filters, sort, pagination |
+| **Tokens** | Create API tokens limited by CIDR + scopes |
+| **Settings** | Password, NFS defaults, **Swagger on/off**, **panel firewall CIDRs** |
+| **Swagger** | `/swagger` when enabled (default on) |
+
+### Create an export (typical flow)
+
+1. **Storages → New storage**
+2. Choose path (Browse… under `/mnt` or your shared volume)
+3. Set clients (`*` or a LAN CIDR such as `192.168.200.0/24`)
+4. Tune access / squash / fsid (exactly one enabled export should use `fsid=0`)
+5. Optional **quota**: amount + unit (MB/GB/TB) and postback URL
+6. **Save & Apply** → writes `/etc/exports` and runs `exportfs -rv`  
+   Missing directories are created automatically (`mkdir -p`).
+
+### Quotas & postback
+
+- Default quota = **unlimited** (`quotaBytes: 0`)
+- Usage is measured as **directory size** under the export path
+- When usage ≥ quota, the manager POSTs once:
+
+```http
+POST <quotaPostbackUrl>
+Content-Type: application/json
+X-NFS-Manager-Event: quota.full
 ```
-FROM alpine:latest
-LABEL maintainer "Izet Molla <izetmolla@icloud.com>"
-LABEL source "https://github.com/izetmolla/nfs-server-alpine"
-LABEL branch "master"
-COPY Dockerfile README.md /
 
-RUN apk add --no-cache --update --verbose nfs-utils bash iproute2 && \
-    rm -rf /var/cache/apk /tmp /sbin/halt /sbin/poweroff /sbin/reboot && \
-    mkdir -p /var/lib/nfs/rpc_pipefs /var/lib/nfs/v4recovery && \
-    echo "rpc_pipefs    /var/lib/nfs/rpc_pipefs rpc_pipefs      defaults        0       0" >> /etc/fstab && \
-    echo "nfsd  /proc/fs/nfsd   nfsd    defaults        0       0" >> /etc/fstab
-
-COPY exports /etc/
-COPY nfsd.sh /usr/bin/nfsd.sh
-COPY .bashrc /root/.bashrc
-
-RUN chmod +x /usr/bin/nfsd.sh
-
-ENTRYPOINT ["/usr/bin/nfsd.sh"]
+```json
+{
+  "event": "quota.full",
+  "exportId": 1,
+  "path": "/mnt/media",
+  "usedBytes": 10737418240,
+  "quotaBytes": 10737418240,
+  "usedPct": 100,
+  "message": "storage export reached its configured quota"
+}
 ```
 
-### Acknowlegements
+Automatic checks run about every **60s**; you can also trigger **Reports → Check quotas now**.
 
-Thanks to Torsten Bronger @bronger for the suggestion and help around implementing a multistage Docker build to better handle the inclusion of Confd (since removed).
+### Panel security tips
+
+- Change `PANEL_PASSWORD` immediately
+- Settings → **Panel firewall**: restrict to management CIDRs (default `0.0.0.0/0`)
+- Prefer client CIDRs on exports instead of `*` in production
+- Disable Swagger in production if unused
+
+---
+
+## Environment variables
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `SHARED_DIRECTORY` | _(required for seed)_ | NFSv4 root path inside the container |
+| `PANEL_PASSWORD` | _(required)_ | Panel / API password |
+| `PANEL_ADDR` | `:3000` | Panel listen address |
+| `MANAGER_DB` | `/var/lib/nfs-manager/manager.db` | SQLite database path |
+| `EXPORTS_FILE` | `/etc/exports` | Exports file path |
+| `BROWSE_ROOTS` | `SHARED_DIRECTORY` or `/mnt` | Paths the UI may browse/create |
+| `PERMITTED` | `*` | Initial client ACL when seeding from env |
+| `READ_ONLY` | unset → `rw` | Seed read-only if set |
+| `SYNC` | unset → `async` | Seed sync mode if set |
+| `SHARED_DIRECTORY_2` | unset | Optional second share (must be under root) |
+
+Persist `/var/lib/nfs-manager` so panel settings, tokens, metrics, and exports survive restarts.
+
+---
+
+## REST API (short)
+
+Base path: `/api` · Auth: `Authorization: Bearer <PANEL_PASSWORD>` or `nfs_<token>`
+
+Useful endpoints:
+
+- `GET /api/dashboard?range=last_7_days`
+- `GET/POST /api/exports` · `PUT/DELETE /api/exports/:id` · `POST /api/exports/apply`
+- `GET /api/exports/:id/usage` · `PUT /api/exports/:id/quota`
+- `GET /api/reports/storage` · `GET /api/reports/quotas` · `POST /api/reports/quotas/check`
+- `GET/POST /api/tokens`
+- `GET /api/public-config`
+
+Interactive docs: `/swagger` (when enabled).
+
+---
+
+## Client notes
+
+```bash
+# Explicit NFSv4
+sudo mount -t nfs4 -o nfsvers=4,proto=tcp,port=2049 SERVER:/ /mnt/nfs
+
+# Subdirectory of the root share (relative to fsid=0)
+sudo mount -t nfs4 SERVER:/media /mnt/media
+```
+
+- macOS / many containers need export option **`insecure`** (panel default).
+- `showmount -e` may not work usefully; prefer `exportfs -v` on the server or the panel status view.
+- Ensure host modules are available: `modprobe nfs nfsd` if needed.
+
+---
+
+## Build from source
+
+```bash
+git clone https://github.com/izetmolla/nfs-server-alpine.git
+cd nfs-server-alpine
+docker build -t izetmolla/nfs-server-alpine:latest .
+```
+
+Multi-stage build: Bun frontend → Go manager → UPX shrink → Alpine runtime.
+
+---
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Mount connection refused on 2049 | Container privileged? `nfsd` threads > 0? `ss -lntp` shows 2049? |
+| Permission denied from client | Export clients CIDR, `insecure`, squash options |
+| Panel unreachable | Port 3000 published? Panel firewall CIDR? |
+| Quota postback not firing | URL must be `http(s)://…` · check Logs for `quota` · run **Check quotas now** |
+| Empty second share | Must be a **subdirectory** of `SHARED_DIRECTORY` (NFSv4 tree) |
+
+Successful NFS startup log includes `Startup successful.` and a listening socket on **2049**.
+
+---
+
+## Licence / source
+
+**Author / Maintainer:** [Izet Molla](https://github.com/izetmolla) · [github.com/izetmolla/nfs-server-alpine](https://github.com/izetmolla/nfs-server-alpine)
+
+| File | Raw (works from Docker Hub README) |
+| --- | --- |
+| [Dockerfile](https://raw.githubusercontent.com/izetmolla/nfs-server-alpine/main/Dockerfile) | `https://raw.githubusercontent.com/izetmolla/nfs-server-alpine/main/Dockerfile` |
+| [docker-compose.yaml](https://raw.githubusercontent.com/izetmolla/nfs-server-alpine/main/docker-compose.yaml) | `https://raw.githubusercontent.com/izetmolla/nfs-server-alpine/main/docker-compose.yaml` |
+| [k8s.yaml](https://raw.githubusercontent.com/izetmolla/nfs-server-alpine/main/k8s.yaml) | `https://raw.githubusercontent.com/izetmolla/nfs-server-alpine/main/k8s.yaml` |
+| [LICENSE](https://raw.githubusercontent.com/izetmolla/nfs-server-alpine/main/LICENSE) | `https://raw.githubusercontent.com/izetmolla/nfs-server-alpine/main/LICENSE` |
+
+This image is intended for trusted networks. Do not expose NFS or the panel to the public internet without strong network controls.

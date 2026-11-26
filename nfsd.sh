@@ -102,13 +102,31 @@ while true; do
     echo "Displaying rpcbind status..."
     /sbin/rpcinfo
 
+    # Ensure kernel nfsd filesystem is available (required for port 2049).
+    mkdir -p /var/lib/nfs/rpc_pipefs /var/lib/nfs/v4recovery /proc/fs/nfsd
+    if ! mountpoint -q /var/lib/nfs/rpc_pipefs; then
+      mount -t rpc_pipefs rpc_pipefs /var/lib/nfs/rpc_pipefs || true
+    fi
+    if ! mountpoint -q /proc/fs/nfsd; then
+      echo "Mounting nfsd filesystem on /proc/fs/nfsd..."
+      mount -t nfsd nfsd /proc/fs/nfsd
+    fi
+    modprobe nfsd 2>/dev/null || true
+
     # Only required if v3 will be used
     # /usr/sbin/rpc.idmapd
     # /usr/sbin/rpc.gssd -v
     # /usr/sbin/rpc.statd
 
     echo "Starting NFS in the background..."
-    /usr/sbin/rpc.nfsd --debug 8 --no-udp --no-nfs-version 2 --no-nfs-version 3
+    # Alpine/kernel here has no NFSv2; passing --no-nfs-version 2 makes rpc.nfsd abort.
+    /usr/sbin/rpc.nfsd --debug 8 --no-udp --no-nfs-version 3 8
+    if [ ! -e /proc/fs/nfsd/versions ] || [ "$(cat /proc/fs/nfsd/threads 2>/dev/null || echo 0)" = "0" ]; then
+      echo "ERROR: nfsd threads did not start"
+      sleep 2
+      pid=""
+      continue
+    fi
     echo "Exporting File System..."
     if /usr/sbin/exportfs -rv; then
       /usr/sbin/exportfs
@@ -116,8 +134,8 @@ while true; do
       echo "Export validation failed, exiting..."
       exit 1
     fi
-    echo "Starting Mountd in the background..."These
-    /usr/sbin/rpc.mountd --debug all --no-udp --no-nfs-version 2 --no-nfs-version 3
+    echo "Starting Mountd in the background..."
+    /usr/sbin/rpc.mountd --debug all --no-udp --no-nfs-version 3
 # --exports-file /etc/exports
 
     # Check if NFS is now running by recording it's PID (if it's not running $pid will be null):

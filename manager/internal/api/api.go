@@ -104,7 +104,16 @@ func (h *Handler) Register(app *fiber.App) {
 	api.Post("/reports/quotas/check", h.Auth.RequireAuth(models.ScopeExportsWrite), h.QuotaCheck)
 
 	api.Get("/filesystem", h.Auth.RequireAuth(models.ScopeExportsRead), h.ListFilesystem)
+	api.Get("/filesystem/stat", h.Auth.RequireAuth(models.ScopeExportsRead), h.StatFilesystem)
+	api.Get("/filesystem/download", h.Auth.RequireAuth(models.ScopeExportsRead), h.DownloadFilesystem)
 	api.Post("/filesystem/mkdir", h.Auth.RequireAuth(models.ScopeExportsWrite), h.MkdirFilesystem)
+	api.Post("/filesystem/touch", h.Auth.RequireAuth(models.ScopeExportsWrite), h.TouchFilesystem)
+	api.Post("/filesystem/rename", h.Auth.RequireAuth(models.ScopeExportsWrite), h.RenameFilesystem)
+	api.Post("/filesystem/move", h.Auth.RequireAuth(models.ScopeExportsWrite), h.MoveFilesystem)
+	api.Post("/filesystem/copy", h.Auth.RequireAuth(models.ScopeExportsWrite), h.CopyFilesystem)
+	api.Post("/filesystem/upload", h.Auth.RequireAuth(models.ScopeExportsWrite), h.UploadFilesystem)
+	api.Delete("/filesystem", h.Auth.RequireAuth(models.ScopeExportsWrite), h.DeleteFilesystem)
+	api.Post("/filesystem/delete", h.Auth.RequireAuth(models.ScopeExportsWrite), h.DeleteFilesystem)
 
 	api.Get("/tokens", h.Auth.RequirePanel(), h.ListTokens)
 	api.Post("/tokens", h.Auth.RequirePanel(), h.CreateToken)
@@ -842,33 +851,6 @@ func (h *Handler) browseRoots() []string {
 		return h.BrowseRoots
 	}
 	return fsbrowse.RootsFromEnv(os.Getenv("BROWSE_ROOTS"))
-}
-
-func (h *Handler) ListFilesystem(c fiber.Ctx) error {
-	path := c.Query("path")
-	if strings.TrimSpace(path) == "" {
-		path = h.browseRoots()[0]
-	}
-	listing, err := fsbrowse.List(path, h.browseRoots())
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(listing)
-}
-
-func (h *Handler) MkdirFilesystem(c fiber.Ctx) error {
-	var body struct {
-		Path string `json:"path"`
-	}
-	if err := c.Bind().JSON(&body); err != nil || strings.TrimSpace(body.Path) == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "path is required"})
-	}
-	listing, err := fsbrowse.Mkdir(body.Path, h.browseRoots())
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-	}
-	h.Log.Info("filesystem", "mkdir", listing.Path)
-	return c.Status(fiber.StatusCreated).JSON(listing)
 }
 
 func (h *Handler) ListTokens(c fiber.Ctx) error {

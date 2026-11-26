@@ -37,13 +37,18 @@ export function PathBrowser({ value, onChange }: Props) {
     void load(value || "/mnt")
   }, [open, value, load])
 
+  const folders = useMemo(
+    () => (listing?.entries || []).filter((e) => e.isDir),
+    [listing]
+  )
+
   const folderOptions = useMemo(
     () =>
-      (listing?.entries || []).map((e) => ({
+      folders.map((e) => ({
         value: e.path,
         label: e.name,
       })),
-    [listing]
+    [folders]
   )
 
   async function createFolder(name: string) {
@@ -138,13 +143,13 @@ export function PathBrowser({ value, onChange }: Props) {
           </div>
 
           <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
-            {(listing?.entries || []).length === 0 ? (
+            {folders.length === 0 ? (
               <p className="px-3 py-4 text-xs text-muted-foreground">
                 {busy ? "Loading…" : "No subfolders here."}
               </p>
             ) : (
               <ul>
-                {listing?.entries.map((entry) => (
+                {folders.map((entry) => (
                   <li key={entry.path}>
                     <button
                       type="button"

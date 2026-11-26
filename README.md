@@ -24,6 +24,7 @@ Base: Alpine **3.24.4** · NFSv4 only (no UDP / no v2)
 - Live logs, settings, panel firewall CIDRs, Swagger toggle
 - IP-scoped API tokens for automation
 - Optional **MCP** endpoint (OAuth + Streamable HTTP) for AI clients — off by default
+- **Files** explorer (Windows-style) for browsing/managing folders & files under storage roots
 
 ---
 

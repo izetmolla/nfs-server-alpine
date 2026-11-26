@@ -9,6 +9,7 @@ import { ReportsPage } from "@/pages/ReportsPage"
 import { SettingsPage } from "@/pages/SettingsPage"
 import { StorageCreatePage } from "@/pages/StorageCreatePage"
 import { StorageEditPage } from "@/pages/StorageEditPage"
+import { FilesPage } from "@/pages/FilesPage"
 import { StoragesPage } from "@/pages/StoragesPage"
 import { TokensPage } from "@/pages/TokensPage"
 import { UsersPage } from "@/pages/UsersPage"
@@ -23,6 +24,7 @@ export function App() {
           <Route path="storages" element={<StoragesPage />} />
           <Route path="storages/new" element={<StorageCreatePage />} />
           <Route path="storages/:id" element={<StorageEditPage />} />
+          <Route path="files" element={<FilesPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="logs" element={<LogsPage />} />
           <Route path="tokens" element={<TokensPage />} />

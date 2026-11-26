@@ -214,12 +214,21 @@ export type OptionCatalog = {
   notes: string[]
 }
 
+export type FsEntry = {
+  name: string
+  path: string
+  isDir: boolean
+  size: number
+  modTime: string
+  mode?: string
+}
+
 export type FsListing = {
   path: string
   parent?: string
   exists: boolean
   isDir: boolean
-  entries: Array<{ name: string; path: string; isDir: boolean }>
+  entries: FsEntry[]
   allowedRoots: string[]
   writable: boolean
 }
@@ -456,10 +465,66 @@ export const api = {
       .get<FsListing>("/api/filesystem", { params: { path } })
       .then((r) => r.data)
   },
+  statFilesystem(path: string) {
+    return http
+      .get<FsEntry>("/api/filesystem/stat", { params: { path } })
+      .then((r) => r.data)
+  },
   mkdirFilesystem(path: string) {
     return http
       .post<FsListing>("/api/filesystem/mkdir", { path })
       .then((r) => r.data)
+  },
+  touchFilesystem(path: string) {
+    return http
+      .post<FsEntry>("/api/filesystem/touch", { path })
+      .then((r) => r.data)
+  },
+  renameFilesystem(from: string, to: string) {
+    return http
+      .post<FsEntry>("/api/filesystem/rename", { from, to })
+      .then((r) => r.data)
+  },
+  moveFilesystem(from: string, to: string) {
+    return http
+      .post<FsEntry>("/api/filesystem/move", { from, to })
+      .then((r) => r.data)
+  },
+  copyFilesystem(from: string, to: string) {
+    return http
+      .post<FsEntry>("/api/filesystem/copy", { from, to })
+      .then((r) => r.data)
+  },
+  deleteFilesystem(paths: string | string[]) {
+    const body = Array.isArray(paths) ? { paths } : { path: paths }
+    return http
+      .post<{ ok: boolean; deleted: number }>("/api/filesystem/delete", body)
+      .then((r) => r.data)
+  },
+  uploadFilesystem(dir: string, file: File) {
+    const form = new FormData()
+    form.append("path", dir)
+    form.append("file", file)
+    return http
+      .post<FsEntry>("/api/filesystem/upload", form, {
+        headers: { "Content-Type": undefined },
+      })
+      .then((r) => r.data)
+  },
+  async downloadFilesystem(path: string) {
+    const r = await http.get<Blob>("/api/filesystem/download", {
+      params: { path },
+      responseType: "blob",
+    })
+    const name = path.split("/").filter(Boolean).pop() || "download"
+    const url = URL.createObjectURL(r.data)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   },
   listTokens() {
     return http.get<APIToken[]>("/api/tokens").then((r) => r.data)

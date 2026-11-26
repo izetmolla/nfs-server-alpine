@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 const links = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/storages", label: "Storages" },
+  { to: "/files", label: "Files" },
   { to: "/reports", label: "Reports" },
   { to: "/logs", label: "Logs" },
   { to: "/tokens", label: "Tokens" },
@@ -28,7 +29,7 @@ export function AppLayout() {
   }, [])
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-6xl flex-col gap-6 p-6">
+    <div className="mx-auto flex min-h-svh w-full max-w-7xl flex-col gap-6 p-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-medium">NFS Manager</h1>

@@ -230,7 +230,9 @@ Automatic checks run about every **60s**; you can also trigger **Reports → Che
 | `READ_ONLY` | unset → `rw` | Seed read-only if set |
 | `SYNC` | unset → `async` | Seed sync mode if set |
 | `SHARED_DIRECTORY_2` | unset | Optional second share (must be under root) |
-| `MCP_PUBLIC_BASE_URL` | unset | Fallback public URL for MCP OAuth discovery (also set in panel → MCP) |
+| `MCP_ENABLED` | unset / `false` | When set, forces MCP on/off and persists into panel settings on boot |
+| `MCP_ALLOW_WRITE` | unset / `true` | When set, forces MCP write tools on/off |
+| `MCP_PUBLIC_BASE_URL` | unset | Public URL for MCP OAuth discovery (also set in panel → MCP) |
 
 Persist `/var/lib/nfs-manager` so panel settings, tokens, metrics, and exports survive restarts.
 
@@ -240,9 +242,9 @@ Persist `/var/lib/nfs-manager` so panel settings, tokens, metrics, and exports s
 
 OAuth 2.0 (PKCE + dynamic client registration) protects Streamable HTTP MCP at `/mcp`, same pattern as [gomcp](https://github.com/izetmolla/gomcp).
 
-1. Open panel → **MCP** (`/mcp-admin`)
-2. Set **Public base URL** to how clients reach the host (e.g. `http://192.168.1.10:3000`)
-3. Enable MCP (optionally enable **write tools**)
+1. Enable MCP via panel → **MCP** (`/mcp-admin`), or set `MCP_ENABLED=true` (+ optional `MCP_PUBLIC_BASE_URL`) in env / Kubernetes
+2. Set **Public base URL** to how clients reach the host (e.g. `http://192.168.1.10:3000` or `http://10.100.100.100:3000`)
+3. Optionally enable **write tools** (`MCP_ALLOW_WRITE`, on by default)
 4. On the MCP page use **Open with** for Cursor, Claude.ai, Claude Code, Codex, VS Code, Goose (or copy the matching config tab)
 5. Client shows **Authorize** → sign in with username `admin` and the **panel password**
 6. Revoke sessions / delete OAuth clients from the same MCP page

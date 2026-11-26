@@ -53,6 +53,9 @@ func main() {
 	}
 
 	settingsStore := &settings.Store{DB: gdb}
+	if err := settingsStore.ApplyMCPEnv(); err != nil {
+		log.Fatalf("mcp env: %v", err)
+	}
 	tokenStore := &tokens.Store{DB: gdb}
 	effectivePassword, err := settingsStore.LoadPassword(password)
 	if err != nil {

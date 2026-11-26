@@ -150,6 +150,14 @@ spec:
                 secretKeyRef:
                   name: nfs-panel
                   key: password
+            # Keep MCP on across restarts (Cursor / AI clients).
+            - name: MCP_ENABLED
+              value: "true"
+            - name: MCP_ALLOW_WRITE
+              value: "true"
+            # Must match how clients reach the panel (ClusterIP / Node IP / ingress).
+            - name: MCP_PUBLIC_BASE_URL
+              value: "http://10.100.100.100:3000"
           securityContext:
             privileged: true
           ports:
@@ -189,9 +197,9 @@ spec:
           persistentVolumeClaim:
             claimName: nfs-manager
 ---
-# In-cluster NFSv4 (TCP 2049). Clients use:
-#   server: nfs-server.nfs.svc.cluster.local
-#   path:   /   (or a subdir under SHARED_DIRECTORY / fsid=0)
+# In-cluster NFSv4 (TCP 2049) + manager panel (TCP 3000 / MCP).
+# NFS clients: server nfs-server.nfs.svc.cluster.local path /
+# MCP / panel: http://<clusterIP>:3000  (pin clusterIP if Cursor uses a fixed URL)
 apiVersion: v1
 kind: Service
 metadata:
@@ -202,6 +210,7 @@ metadata:
     app.kubernetes.io/component: nfs
 spec:
   type: ClusterIP
+  clusterIP: 10.100.100.100
   selector:
     app: nfs-server
   ports:
@@ -209,9 +218,12 @@ spec:
       protocol: TCP
       port: 2049
       targetPort: nfs
+    - name: panel
+      protocol: TCP
+      port: 3000
+      targetPort: panel
 ---
-# Manager panel + REST API (+ Swagger when enabled)
-# ClusterIP + port-forward for labs; switch to NodePort/LoadBalancer to expose.
+# Alias for panel-only access / port-forward convenience.
 apiVersion: v1
 kind: Service
 metadata:
@@ -222,8 +234,6 @@ metadata:
     app.kubernetes.io/component: panel
 spec:
   type: ClusterIP
-  # type: NodePort
-  # type: LoadBalancer
   selector:
     app: nfs-server
   ports:
@@ -231,7 +241,6 @@ spec:
       protocol: TCP
       port: 3000
       targetPort: panel
-      # nodePort: 30030
 ---
 # Optional NodePort for NFS from outside the cluster (same node as the pod).
 # Prefer LoadBalancer or a metalLB VIP when available.

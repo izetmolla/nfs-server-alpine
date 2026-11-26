@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"os"
 	"strconv"
 	"strings"
 
@@ -163,7 +164,50 @@ func (s *Store) LoadMCPSettings() (models.MCPSettings, error) {
 	} else if ok {
 		cfg.PublicBaseURL = strings.TrimSpace(v)
 	}
+	applyMCPEnv(&cfg)
 	return cfg, nil
+}
+
+// ApplyMCPEnv persists MCP_* environment overrides into SQLite so panel UI and
+// restarts stay aligned with Kubernetes/compose config.
+func (s *Store) ApplyMCPEnv() error {
+	cfg, err := s.LoadMCPSettings()
+	if err != nil {
+		return err
+	}
+	// LoadMCPSettings already applied env overlays; only write when env is present.
+	if _, ok := os.LookupEnv("MCP_ENABLED"); !ok {
+		if _, ok := os.LookupEnv("MCP_ALLOW_WRITE"); !ok {
+			if strings.TrimSpace(os.Getenv("MCP_PUBLIC_BASE_URL")) == "" {
+				return nil
+			}
+		}
+	}
+	_, err = s.SaveMCPSettings(cfg)
+	return err
+}
+
+func applyMCPEnv(cfg *models.MCPSettings) {
+	if v, ok := os.LookupEnv("MCP_ENABLED"); ok {
+		cfg.Enabled = parseEnvBool(v, cfg.Enabled)
+	}
+	if v, ok := os.LookupEnv("MCP_ALLOW_WRITE"); ok {
+		cfg.AllowWrite = parseEnvBool(v, cfg.AllowWrite)
+	}
+	if v := strings.TrimSpace(os.Getenv("MCP_PUBLIC_BASE_URL")); v != "" {
+		cfg.PublicBaseURL = strings.TrimRight(v, "/")
+	}
+}
+
+func parseEnvBool(raw string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
 }
 
 func (s *Store) SaveMCPSettings(in models.MCPSettings) (models.MCPSettings, error) {
